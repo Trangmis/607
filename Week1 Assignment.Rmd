@@ -1,0 +1,125 @@
+---
+title: "DATA 607 - WEEK 1 - ASSIGNMENT"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUCTION
+
+Thanksgiving is a national holiday to celebrate the harvest and other blessings. It has also been known as a day of welcoming of immigrants to America. It's also a day of mass food consumption associating with spirit activities. Is the celebration different from one area to another? Do food consumption and activities on Thanksgiving day have a relationship to gender, age, income, or where people live.
+
+## DATA SOURCE
+
+According to data from the article at
+https://fivethirtyeight.com/features/heres-what-your-part-of-america-eats-on-thanksgiving/ by Walt Hickey on 
+NOV. 20, 2015, a survey was collected from 1,058 respondents.
+
+```{r data}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+library(gridExtra)
+
+thanksgiving <- "https://raw.githubusercontent.com/Trangmis/607/master/thanksgiving-2015-poll-data.csv"
+
+thanksgiving_data <- read.csv(file = thanksgiving)
+
+thanksgiving_data <- rename(thanksgiving_data, Celebrate = "Do.you.celebrate.Thanksgiving.",
+Main_dish = "What.is.typically.the.main.dish.at.your.Thanksgiving.dinner.",
+Main_dish_other = "What.is.typically.the.main.dish.at.your.Thanksgiving.dinner....Other..please.specify.",
+Main_disk_cooking_type ="How.is.the.main.dish.typically.cooked.",
+Main_disk_cooking_type_other="How.is.the.main.dish.typically.cooked....Other..please.specify.",
+Stuff_dressing_type="What.kind.of.stuffing.dressing.do.you.typically.have.",
+Stuff_dressing_type_other="What.kind.of.stuffing.dressing.do.you.typically.have....Other..please.specify.",
+Cranberry_sauce_type="What.type.of.cranberry.saucedo.you.typically.have.",
+Cranberry_sauce_type_other="What.type.of.cranberry.saucedo.you.typically.have....Other..please.specify.",
+Typicall_grave="Do.you.typically.have.gravy.",
+Brusselsprouts="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Brussel.sprouts",
+Carrot="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Carrots",
+Cauliflower="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Cauliflower",
+Corn="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Corn",
+Cornbread="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Cornbread",
+Fruitsalad="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Fruit.salad",
+Greenbeans="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Green.beans.green.bean.casserole",
+Macaronicheese="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Macaroni.and.cheese",
+Mashedpotato="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Mashed.potatoes",
+Rollsbiscuit="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Rolls.biscuits",
+Squash="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Squash",
+Vegetablesalad="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Vegetable.salad",
+Yammsweetpotato="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Yams.sweet.potato.casserole",
+sidedish_other="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Other..please.specify.",
+sidedish_other_type="Which.of.these.side.dishes.aretypically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Other..please.specify..1",
+Apple="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Apple",
+Buttermik="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Buttermilk",
+Cherry="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Cherry",
+Chocolate="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Chocolate",
+Coconutcream="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Coconut.cream",
+Keylime="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Key.lime",
+Peach="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Peach",
+Pecan="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Pecan",
+Pumpkin="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Pumpkin",
+Sweetpotato="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Sweet.Potato",
+Nopie="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....None",
+Pie_other_1="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Other..please.specify.",
+Pie_other_2="Which.type.of.pie.is.typically.served.at.your.Thanksgiving.dinner..Please.select.all.that.apply....Other..please.specify..1",
+Dessert_Applecobbler="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Apple.cobbler",
+Dessert_Blondies="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Blondies",
+Dessert_Brownies="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Brownies",
+Dessert_Carrotcake="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Carrot.cake",
+Dessert_Cheesecake="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Cheesecake",
+Dessert_Cookies="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Cookies",
+Dessert_Fudge="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Fudge",
+Dessert_Icecream="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Ice.cream",
+Dessert_Peachcobbler="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Peach.cobbler",
+Dessert_None="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......None",
+Dessert_other1="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Other..please.specify.",
+Dessert_other2="Which.of.these.desserts.do.you.typically.have.at.Thanksgiving.dinner..Please.select.all.that.apply......Other..please.specify..1",
+Pray="Do.you.typically.pray.before.or.after.the.Thanksgiving.meal.",
+Travel="How.far.will.you.travel.for.Thanksgiving.",
+Macyparade="Will.you.watch.any.of.the.following.programs.on.Thanksgiving..Please.select.all.that.apply....Macy.s.Parade",
+Ageattable="What.s.the.age.cutoff.at.your..kids..table..at.Thanksgiving.",
+Meetupfriends="Have.you.ever.tried.to.meet.up.with.hometown.friends.on.Thanksgiving.night.",
+Thanksgivingwithfriends="Have.you.ever.attended.a..Friendsgiving..",
+Shoponthanksgiving="Will.you.shop.any.Black.Friday.sales.on.Thanksgiving.Day.",
+Workinretail="Do.you.work.in.retail.",
+Workonblackfriday="Will.you.employer.make.you.work.on.Black.Friday.",
+Livingregion="How.would.you.describe.where.you.live.",
+Gender="What.is.your.gender.",
+Icome="How.much.total.combined.money.did.all.members.of.your.HOUSEHOLD.earn.last.year.",
+USregion="US.Region")
+
+summary(thanksgiving_data)
+``` 
+
+## PLOT
+
+### Main dish in the different living region such as Rural, Suburban, Urban
+
+The plot shows that people in suburban areas celebrate this holiday more than rural and urban. The data shows that turkey is the most consumed dish on Thanksgiving day. It includes Rural, Suburban, and Urban areas. The turkey consumption in the suburbs is higher, while rural and urban areas have less turkey consumption. 
+
+```{r plots}
+maindish_livingregion <- thanksgiving_data %>%
+                        group_by(Main_dish,Livingregion) %>%
+                        summarize(count = n())
+
+ggplot(data=thanksgiving_data, aes(x=thanksgiving_data$Livingregion,fill=thanksgiving_data$Main_dish))+
+  geom_bar(stat = "count",position="dodge")+
+  xlab("Living Region")
+```
+
+## CONCLUSION
+
+The conclusion will base on data & plots to approach possible answers about consumption trends for main dishes, side dishes, desserts....It also need a closed look of the relationship by region, age, gender. 
+
+
+## WORK CITED
+
+Hickey, Walt. “Here's What Your Part of America Eats On Thanksgiving.” FiveThirtyEight, FiveThirtyEight, 20 Nov. 2015, fivethirtyeight.com/features/heres-what-your-part-of-america-eats-on-thanksgiving/. 
+
