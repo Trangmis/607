@@ -1,0 +1,99 @@
+---
+title: "DATA 607 ASSIGNMENT - SQL and R"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::material
+---
+
+# Introduction:
+
+The assignment focus on creating an R dataframe from different sources such as SQL databases,  CSV files.
+
+Due to an free account, a survey https://www.surveymonkey.com/r/D2FCKW2 was created on SurveyMonkey.com can't download responses in any format csv, excel.... So the result was duplicated by using Google Form https://forms.gle/m4wBvZBi3pyyP98N8. A CSV file is used to import data to PostgerSQL.
+
+# Preparing Data
+## Create database & data for PostgreSQL from csv file.
+
+STEP 1: Create DB movies
+
+CREATE DATABASE movies
+    WITH 
+    OWNER = postgres
+    ENCODING = 'UTF8'
+    LC_COLLATE = 'English_United States.1252'
+    LC_CTYPE = 'English_United States.1252'
+    TABLESPACE = pg_default
+    CONNECTION LIMIT = -1;
+
+STEP 2: Create table    
+-- Table: public.ratedmovies
+
+-- DROP TABLE public.ratedmovies;
+
+CREATE TABLE IF NOT EXISTS public.ratedmovies
+(
+    "Timestamp" date,
+    score "char",
+    black_widow "char",
+    f9_the_fast_saga "char",
+    the_jungle_cruise "char",
+    the_suicide_quad "char",
+    "hitmans_wifes_bodyguard" "char",
+    the_marksman "char"
+);
+
+ALTER TABLE public.ratedmovies
+    OWNER to ass2;
+ 
+STEP 3: Using import tool in PostgreSQL to import data from csv file to to use
+
+*** One important note to create a column (a field) for a table in PostgreSQL is that the uppercase letter in the column name causes an "ERROR:  column "....." does not exist" when using Select syntax.
+
+## Access data from PostgreSQL
+
+```{r opendb-connect}
+library(DBI)
+library(dplyr)
+
+db <- 'movies'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'ass2' 
+db_password <- 'data607'
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+dbquery <- dbGetQuery(con,'SELECT * FROM ratedmovies')
+
+dbquery$black_widow[dbquery$black_widow == 'N'] <- NA   
+dbquery$f9_the_fast_saga [dbquery$f9_the_fast_saga == 'N'] <- NA  
+dbquery$the_jungle_cruise [dbquery$the_jungle_cruise == 'N'] <- NA 
+dbquery$the_suicide_quad [dbquery$the_suicide_quad  == 'N'] <- NA 
+dbquery$hitmans_wifes_bodyguard [dbquery$hitmans_wifes_bodyguard  == 'N'] <- NA 
+dbquery$the_marksmand [dbquery$the_marksman  == 'N'] <- NA 
+
+glimpse(dbquery)
+```
+## Reading CSV file
+
+```{r csvfile}
+csvpath <- "https://raw.githubusercontent.com/Trangmis/607/master/favoritemovies.csv"
+csvdata <- read.csv(file = csvpath)
+
+glimpse(csvdata)
+```
+
+# Analyzing Data
+## PostgreSQL
+1. Create a view in PostgreSQL for ranking the most favorite movies based on rating = 5
+
+2. Show the result
+
+```{r postgresql}
+mostfavorite <- dbGetQuery(con,'SELECT * FROM mostfavorite')
+mostfavorite
+```
+# Notes
+All works that are done on PostgreSQL can be found here https://github.com/Trangmis/607/blob/master/Assigment2%20work%20on%20PostgreSQL
+
