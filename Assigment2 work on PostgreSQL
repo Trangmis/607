@@ -1,0 +1,86 @@
+-- Table: public.ratedmovies
+
+-- DROP TABLE public.ratedmovies;
+
+CREATE TABLE IF NOT EXISTS public.ratedmovies
+(
+    "Timestamp" date,
+    "Score" "char",
+    "Black Widow" "char",
+    "F9 The Fast Saga" "char",
+    "The Jungle Cruise" "char",
+    "The Suicide Quad" "char",
+    "Hitman's Wife's Bodyguard" "char",
+    "The Marksman" "char"
+);
+
+ALTER TABLE public.ratedmovies
+    OWNER to ass2;
+	
+Command to import CSV file	
+COPY ratedmovies
+FROM 'C:/Data/1.csv'
+DELIMITER ',' CSV HEADER;
+
+Create a view for Ranking the most favorite movies
+----------
+SELECT bw."Most Favorite",
+    bw.num,
+    'Black Widow'::text AS movies
+   FROM ( SELECT ratedmovies.black_widow AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.black_widow = '5'::"char"
+          GROUP BY ratedmovies.black_widow
+          ORDER BY ratedmovies.black_widow) bw
+UNION
+ SELECT tm."Most Favorite",
+    tm.num,
+    'The Marksman'::text AS movies
+   FROM ( SELECT ratedmovies.the_marksman AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.the_marksman = '5'::"char"
+          GROUP BY ratedmovies.the_marksman
+          ORDER BY ratedmovies.the_marksman) tm
+UNION
+ SELECT f9."Most Favorite",
+    f9.num,
+    'F9 The Fast Saga'::text AS movies
+   FROM ( SELECT ratedmovies.f9_the_fast_saga AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.f9_the_fast_saga = '5'::"char"
+          GROUP BY ratedmovies.f9_the_fast_saga
+          ORDER BY ratedmovies.f9_the_fast_saga) f9
+UNION
+ SELECT tjc."Most Favorite",
+    tjc.num,
+    'The Jungle Cruise'::text AS movies
+   FROM ( SELECT ratedmovies.the_jungle_cruise AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.the_jungle_cruise = '5'::"char"
+          GROUP BY ratedmovies.the_jungle_cruise
+          ORDER BY ratedmovies.the_jungle_cruise) tjc
+UNION
+ SELECT tsq."Most Favorite",
+    tsq.num,
+    'The Suicide Quad'::text AS movies
+   FROM ( SELECT ratedmovies.the_suicide_quad AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.the_suicide_quad = '5'::"char"
+          GROUP BY ratedmovies.the_suicide_quad
+          ORDER BY ratedmovies.the_suicide_quad) tsq
+UNION
+ SELECT hwb."Most Favorite",
+    hwb.num,
+    'Hitman s wife bodyguard'::text AS movies
+   FROM ( SELECT ratedmovies.hitmans_wifes_bodyguard AS "Most Favorite",
+            count(*) AS num
+           FROM ratedmovies
+          WHERE ratedmovies.hitmans_wifes_bodyguard = '5'::"char"
+          GROUP BY ratedmovies.hitmans_wifes_bodyguard
+          ORDER BY ratedmovies.hitmans_wifes_bodyguard) hwb
+  ORDER BY 2 DESC, 3;
