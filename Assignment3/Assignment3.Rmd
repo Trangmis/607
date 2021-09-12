@@ -1,0 +1,132 @@
+---
+title: "Assignment3"
+author: "Trang Do"
+date: "9/14/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Question 1
+Using the 173 majors listed in fivethirtyeight.com’s College Majors dataset [https://fivethirtyeight.com/features/the-economic-guide-to-picking-a-college-major/], provide code that identifies the majors that contain either "DATA" or "STATISTICS"
+
+```{r}
+library(dplyr)
+library(stringr)
+
+csvpath <- "https://raw.githubusercontent.com/Trangmis/607/master/Assignment3/majors-list.csv"
+csvdata <- read.csv(file = csvpath)
+
+glimpse(csvdata)
+
+filtered_major <- csvdata %>% filter(str_detect(Major,"DATA|STATISTIC"))
+head(filtered_major)
+```
+## Question 2
+Write code that transforms the data below:
+
+[1] "bell pepper"  "bilberry"     "blackberry"   "blood orange"
+[5] "blueberry"    "cantaloupe"   "chili pepper" "cloudberry"  
+[9] "elderberry"   "lime"         "lychee"       "mulberry" 
+[13] "olive"        "salal berry"
+
+Into a format like this:
+
+c("bell pepper", "bilberry", "blackberry", "blood orange", "blueberry", "cantaloupe", "chili pepper", "cloudberry", "elderberry", "lime", "lychee", "mulberry", "olive", "salal berry")
+
+```{r}
+fruit <-c("bell pepper","bilberry","blackberry","blood orange",
+"blueberry","cantaloupe","chili pepper","cloudberry",
+"elderberry","lime","lychee","mulberry","olive","salal berry")
+fruit
+
+newformat <- str_c(fruit,sep=",",collapse = "\", \"")
+newformat <- paste("c(\"",newformat,"\")")
+newformat <- str_replace(newformat, " b", "b")
+newformat <- str_replace(newformat, "y ", "y")
+cat(newformat)
+```
+
+## Question 3
+
+Describe, in words, what these expressions will match:
+A. (.)\1\1 : any string contains three consecutive of \1.
+
+```{r}
+test <- c("u\1\1\1apple", "apple")
+str_view(test, "(.)\1\1", match = TRUE)
+```
+
+B. "(.)(.)\\2\\1" : same letter before and after of 2 same letter
+```{r}
+test <- c("bell pepper","bilberry","blackberry","blood orange",
+"blueberry","cantaloupe","chili pepper","cloudberry",
+"elderberry","lime","lychee","mulberry","olive","salal berry")
+
+str_view(test, "(.)(.)\\2\\1", match = TRUE)
+```
+
+C.  "(..)\1" : \1\1 repeats once time after the first appear of \1\1
+```{r}
+test <- c("bell pepper","bilberry","blackberry","blood orange",
+"blueberry","cantaloupe","chili pepper","cloudberry",
+"elderberry","lime","lychee","mulberry","olive","salal berry",
+"\1\1\1\1apple")
+
+str_view(test, "(..)\1", match = TRUE)
+```
+
+D. "(.).\\1.\\1": The letter is located that has any letter after it. 
+Then the letter with any letter with the repeated letter 
+
+```{r}
+test <- c("bell pepper","bilberry","blackberry","blood orange",
+"blueberry","cantaloupe","chili pepper","cloudberry",
+"elderberry","lime","lychee","mulberry","olive","salal berry",
+"mamamalakaya","momame")
+
+str_view(test, "(.).\\1.\\1", match = TRUE)
+```
+
+D."(.)(.)(.).*\\3\\2\\1" 
+    Ex : 3 letters follows by same three letters but the third swap the position with the first letter.
+    
+```{r}
+test <- c("123123","123213","123231","123132","123321","123312",
+"bebrbehg","banhanabem","dskegkgekek","thABCACBBCAn","thABCCBAn","thCBAABCn")
+
+str_view(test, "(.)(.)(.).*\\3\\2\\1", match = TRUE)
+```
+
+#4 Construct regular expressions to match words that:
+
+A. Start and end with the same character
+  "^(.)(.)*\\1$"
+```{r}
+test <- c("abba","sos","pump","test", "toast", "berry")
+
+str_view(test, "^(.)(.)*\\1$", match = TRUE)
+```     
+B. Contain a repeated pair of letters (e.g. "church" contains "ch" repeated twice.)
+    "(..)(.)*\\1" : This regular expression will check any position of a string and its repeat (one repeat).
+    "^(..)(.)*\\1" : This regular expression will check start of a string and its repeat (one repeat).
+```{r}
+test <- c("church","sos","pump","test", "toast", "berry","jhthjjstha")
+
+str_view(test, "(..)(.)*\\1", match = TRUE)
+str_view(test, "^(..)(.)*\\1", match = TRUE)
+```  
+
+C. Contain one letter repeated in at least three places (e.g. "eleven" contains three "e"s.)
+
+```{r}
+test <- c("eleven","possessiveness")
+str_view(test, "(.)(.)(.).*\\1", match = TRUE)
+
+```
+ 
+ 
