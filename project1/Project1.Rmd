@@ -1,0 +1,279 @@
+---
+title: "Data Analysis - Chess Tournament"
+author: "Trang Do"
+date: '`r Sys.Date()`'
+output:
+  rmdformats::robobook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1. Preparing Data from a provided CSV
+
+This part reads data of players in CSV file to dataframe in R. It also unnecessary data from CSV file
+
+Reading CSV and remove redundant data
+```{r library}
+library(dplyr)
+library(stringr)
+
+path <- "https://raw.githubusercontent.com/Trangmis/607/master/project1/tournamentinfo.txt"
+txtfile <- read.csv(path, header = F, sep = "|")
+
+txtfile <- txtfile %>% filter(!(str_detect(V1,"--|Num|Pair")))
+
+```
+
+## 2. Converting Data to data frame
+
+** Initialize Data Frame
+```{r initialize-data-frame}
+players_frame <- data.frame(playerid=0,playername='',totalpoints=0,R=0,
+                            averagepoint=0,predictedpoint=0,
+                            r1_status='',r1_opponent=0,r2_status=0,r2_opponent=0,
+                            r3_status='',r3_opponent=0,r4_status='',r4_opponent=0,
+                            r5_status='',r5_opponent=0,r6_status='',r6_opponent=0,
+                            r7_status='',r7_opponent=0)
+players <- data.frame(playerid=0,playername='',totalpoints=0,r=0,
+                            averagepoint=0,predictedpoint=0)
+player_games <- data.frame(playerid=0, opponent=0,status='',round=0)
+```
+
+** Scan data from text file and write to dataframe
+
+```{r write-data-to-dataframe}
+for (i in 1:NROW(txtfile)){
+  (i %% 2)
+  if ((i%%2)>0){
+    vplayer <- as.integer(txtfile$V1[i])
+    r1status <- substr(txtfile$V4[i],1,1)
+    r2status <- substr(txtfile$V5[i],1,1)
+    r3status <- substr(txtfile$V6[i],1,1)
+    r4status <- substr(txtfile$V7[i],1,1)
+    r5status <- substr(txtfile$V8[i],1,1)
+    r6status <- substr(txtfile$V9[i],1,1)
+    r7status <- substr(txtfile$V10[i],1,1)
+    r1o <- as.integer(substr(txtfile$V4[i],2,7))
+    r2o <- as.integer(substr(txtfile$V5[i],2,7))
+    r3o <- as.integer(substr(txtfile$V6[i],2,7))
+    r4o <- as.integer(substr(txtfile$V7[i],2,7))
+    r5o <- as.integer(substr(txtfile$V8[i],2,7))
+    r6o <- as.integer(substr(txtfile$V9[i],2,7))
+    r7o <- as.integer(substr(txtfile$V10[i],2,7))
+    rpoint <- as.double(substr(txtfile$V2[i+1],15,19))
+    
+    newplayer <- data.frame(playerid=vplayer,playername=txtfile$V2[i],
+                            totalpoints=as.double(txtfile$V3[i]),R=rpoint,
+                            averagepoint=0.0,predictedpoint=0.0,
+                            r1_status=r1status,r1_opponent=r1o,
+                            r2_status=r2status,r2_opponent=r2o,
+                            r3_status=r3status,r3_opponent=r3o,
+                            r4_status=r4status,r4_opponent=r4o,
+                            r5_status=r5status,r5_opponent=r5o,
+                            r6_status=r6status,r6_opponent=r6o,
+                            r7_status=r7status,r7_opponent=r7o)
+    players_frame <-rbind(players_frame,newplayer)
+    
+    newplayer <- data.frame(playerid=vplayer,playername=txtfile$V2[i],
+                            totalpoints=as.double(txtfile$V3[i]),r=rpoint,
+                            averagepoint=0.0,predictedpoint=0.0)
+    players <-rbind(players,newplayer)
+   }
+}
+players_frame <- players_frame %>% filter(playerid>0)
+players <- players %>% filter(playerid>0)
+```
+
+```{r}
+#---------------Players-Games
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r1_opponent,status=r1_status) %>%
+                        mutate(round = 1))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r2_opponent,status=r2_status) %>%
+                        mutate(round = 2))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r3_opponent,status=r3_status) %>%
+                        mutate(round = 3))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r4_opponent,status=r4_status) %>%
+                        mutate(round = 4))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r5_opponent,status=r5_status) %>%
+                        mutate(round = 5))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r6_opponent,status=r6_status) %>%
+                        mutate(round = 6))
+
+player_games <- rbind(player_games,temp)
+
+temp <- as.data.frame(players_frame %>% 
+                        select (playerid,opponent=r7_opponent,status=r7_status) %>%
+                        mutate(round = 7))
+
+player_games <- rbind(player_games,temp)
+
+player_games <- player_games %>% filter(playerid>0) %>% arrange(playerid)
+```
+
+## 3. All Played Games & Unplayed Games with data frame in R & CSV
+
+## All Played Games
+```{r all-games-players}
+library(stringr)
+
+# count totalgames
+count_Games <- player_games %>% 
+  select(playerid) %>%
+  filter(player_games$status %in% c('W','D','L'))%>%
+  group_by(playerid)%>%
+  summarise(totalgames=n()) %>%
+  arrange(desc(totalgames),playerid)
+# filter players who played all games (7 games)
+all_game_players <- count_Games %>% filter(totalgames == 7)
+
+# Get opponent info.
+allgameplayer <- merge(all_game_players,player_games, by = "playerid")
+
+opponent_inf <- players %>% mutate (opponent = playerid,opponentname=playername,
+                            opponent_totalpoints=totalpoints,opponent_prer=r)
+
+opponent_inf <- opponent_inf %>% select(opponent,opponentname,opponent_totalpoints,opponent_prer)
+
+result <- merge(opponent_inf,allgameplayer, by="opponent")
+result <- result %>% select(playerid,round,status,opponent,opponentname,
+                            opponent_totalpoints,opponent_prer) %>%
+                            arrange(playerid,result$round)
+result<-merge(result,players,by="playerid")
+resultallgames <- result %>% select(playerid,playername,totalpoints,r,round,status,
+                            opponent,opponentname,opponent_totalpoints,
+                            opponent_prer) %>% arrange(playerid,round) %>%
+                            mutate(category = "Played all games")
+```
+
+## One or more unplayed games
+```{r unplayed-game-players}
+library(stringr)
+
+# count totalgames
+count_Games <- player_games %>% 
+  select(playerid) %>%
+  filter(player_games$status == 'U')%>%
+  group_by(playerid)%>%
+  summarise(totalgames=n()) %>%
+  arrange(desc(totalgames),playerid)
+# filter players who have one or more unplayed games
+all_game_players <- count_Games %>% filter(totalgames >=1)
+
+# Get opponent info.
+allgameplayer <- merge(all_game_players,player_games, by = "playerid")
+
+opponent_inf <- players %>% mutate (opponent = playerid,opponentname=playername,
+                            opponent_totalpoints=totalpoints,opponent_prer=r)
+
+opponent_inf <- opponent_inf %>% select(opponent,opponentname,opponent_totalpoints,opponent_prer)
+
+result <- merge(opponent_inf,allgameplayer, by="opponent")
+result <- result %>% select(playerid,round,status,opponent,opponentname,
+                            opponent_totalpoints,opponent_prer) %>%
+                            arrange(playerid,result$round)
+result<-merge(result,players,by="playerid")
+resultunplayedgames <- result %>% select(playerid,playername,totalpoints,r,round,status,
+                            opponent,opponentname,opponent_totalpoints,
+                            opponent_prer) %>% arrange(playerid,round)%>%
+                            mutate(category = ">1 unplayed games")
+```
+
+## Export Data Frame to CSV
+1. Merge all games players and one or more unplayed games players.
+2. Mean function will not display decimals if elements of a calculation are integer, or initial is not a double for example 0.0
+
+```{r combine-and-export}
+exportcsv <- rbind(resultunplayedgames,resultallgames)
+write.csv(exportcsv,"Tdo_Assignment3_Export.csv")
+
+temp <- exportcsv %>%
+            group_by(playerid)%>%
+            summarise(player_AVG_pre_rating = mean(opponent_prer))
+average_rating <-merge(temp,exportcsv, by ="playerid")
+write.csv(average_rating,"tdo_project1_average_rating.csv")
+```
+
+## 4. All Played Games & Unplayed Games with data frame in R & PostgreSQL
+
+```{r}
+# Export to PostgreSQL
+library(DBI)
+
+db <- 'project1'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'ass2' 
+db_password <- 'data607'
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+dbWriteTable(con, "players", players, overwrite = TRUE, row.names = FALSE)
+dbWriteTable(con, "players_frame", players_frame, overwrite = TRUE, row.names = FALSE)
+dbWriteTable(con, "player_games", player_games, overwrite = TRUE, row.names = FALSE)
+## Using tables: players, player_games
+
+sqlstatement <- "SELECT *, AVG(opponent_pre_rating) OVER (PARTITION BY players.playerid)
+                FROM players,
+              	(SELECT result1.*, playername AS opponent_name, r AS opponent_pre_rating,
+              	        totalpoints AS opponent_totalpoints
+              	  FROM (SELECT player_games.*, playedgames,unplayedgames FROM player_games 
+              				, (SELECT player_games.playerid, sum(
+              						CASE
+              						   WHEN status in ('L','W','D') THEN 1
+              						   ELSE 0	
+              						END) AS playedgames, sum(
+              						CASE
+              						   WHEN status = 'U' THEN 1
+              						   ELSE 0	
+              						END) AS unplayedgames
+              					FROM player_games
+              					GROUP BY playerid
+              					HAVING (sum(
+              							CASE
+              							   WHEN status in ('L','W','D') THEN 1
+              							   ELSE 0	
+              							END)=7 or  sum(
+              							CASE
+              							   WHEN status = 'U' THEN 1
+              							   ELSE 0	
+              							END)>=1)) AS filtergames
+              					WHERE player_games.playerid = filtergames.playerid) AS result1 
+              		LEFT JOIN players on result1.opponent  = players.playerid
+              	ORDER BY playerid) AS filterplayer
+              WHERE filterplayer.playerid = players.playerid"
+
+dbquery <- dbGetQuery(con,sqlstatement)
+
+dbWriteTable(con, "tdo_project1_average_rating", dbquery, overwrite = TRUE, row.names = FALSE)
+                  
+dbDisconnect(con)
+```
+
+## 5. ELO Calculation
+
+```{r}
+average_rating
+```
