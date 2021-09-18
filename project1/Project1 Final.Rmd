@@ -1,0 +1,133 @@
+---
+title: "Data Analysis - Chess Tournament"
+author: "Trang Do"
+date: '`r Sys.Date()`'
+output:
+  rmdformats::robobook
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## INTRODUCTION
+ELO chess rating system originated by is one of methods to the relative skill levels, expected score of players in two-player games such as Chess, Go, Draughts... This project is reading players' information from a text file for future of ELO chess rating system application
+
+## 1. Preparing Data from a provided CSV
+
+This part reads data of players in CSV file to dataframe in R. It also remove unnecessary data from CSV file
+
+Reading CSV and remove redundant data
+```{r library}
+library(dplyr)
+library(stringr)
+
+path <- "https://raw.githubusercontent.com/Trangmis/607/master/project1/tournamentinfo.txt"
+txtfile <- read.csv(path, header = F, sep = "|")
+
+txtfile <- txtfile %>% filter(!(str_detect(V1,"--|Num|Pair")))
+```
+
+## 2. Converting Data to data frame
+
+```{r}
+oddrows <- txtfile %>% filter(row_number() %% 2 == 1) %>%
+                      mutate(player = as.integer(V1),
+                             playername = V2,
+                             points = V3,
+                             r1 = substr(V4,1,1), 
+                             r1_opponent = as.integer(substr(V4,2,str_length(V4))),
+                             r2 = substr(V5,1,1), 
+                             r2_opponent = as.integer(substr(V5,2,str_length(V5))),
+                             r3 = substr(V6,1,1), 
+                             r3_opponent = as.integer(substr(V6,2,str_length(V6))),
+                             r4 = substr(V7,1,1), 
+                             r4_opponent = as.integer(substr(V7,2,str_length(V7))),
+                             r5 = substr(V8,1,1), 
+                             r5_opponent = as.integer(substr(V8,2,str_length(V8))),
+                             r6 = substr(V9,1,1), 
+                             r6_opponent = as.integer(substr(V9,2,str_length(V9))),
+                             r7 = substr(V10,1,1), 
+                             r7_opponent = as.integer(substr(V10,2,str_length(V10)))) 
+    
+evenrows <- txtfile %>% 
+          filter(row_number() %% 2 == 0)%>%
+          mutate(player = row_number(),
+             uscf_id = as.integer(substr(V2,1,str_locate_all(pattern = " / R:", V2)[[1]][1])),
+             startp = str_locate(pattern = ":", V2)[[1]][1]+1,
+             end1 = str_locate(V2,"P")-1,
+             end2 = str_locate(V2,">")-2
+             )
+evenrows$end1[is.na(evenrows$end1)] <- 0
+
+evenrows <- evenrows %>%
+                  mutate(pre_rating=as.integer(substr(V2,startp,ifelse(end1==0,end2,end1))))
+
+evenrows <- evenrows %>% select (player,uscf_id , pre_rating)
+oddrows <- oddrows %>% select (player,playername, points, r1,r1_opponent,
+                                r2,r2_opponent, r3,r3_opponent,
+                               r4,r4_opponent, r5,r5_opponent,
+                               r6,r6_opponent, r7,r7_opponent)
+
+df <- merge(evenrows,oddrows,by="player")
+head(df)
+```
+
+## 3. PostgreSQL
+
+### Calculating player's average/expected score & Writing data frame to PostgreSQL
+
+```{r}
+library(DBI)
+
+db <- 'project1'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'ass2' 
+db_password <- 'data607'
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+dbWriteTable(con, "df", df, overwrite = TRUE, row.names = FALSE)
+
+sqlresult <- "SELECT df_games_1.player,allplayed_unplayed.playername, 
+            	 allplayed_unplayed.points,allplayed_unplayed.pre_rating,round,
+            	 df_games_1.status,df.playername as opponent_name, 
+            	 df.points as opponent_points,
+            	 df.pre_rating as opponent_pre_rating,
+            	 AVG(df.pre_rating) OVER (PARTITION BY df_games_1.player), 
+            	 (1/(1+10^((allplayed_unplayed.pre_rating-df.pre_rating)/400))) as expected_score
+              FROM df, (SELECT player,
+              		 UNNEST(
+              			array [r1_opponent, r2_opponent,r3_opponent,r4_opponent, 
+              			r5_opponent, r6_opponent,r7_opponent]) As opponent,
+              		 UNNEST(ARRAY [r1, r2, r3, r4, r5, r6, r7]) AS status,
+              		 UNNEST(ARRAY [1, 2, 3, 4, 5, 6, 7]) AS round
+              		 FROM df) as df_games_1, (SELECT * FROM df
+              		          WHERE (r1 in ('L','W','D') and r2 in ('L','W','D') and 
+              			               r3 in ('L','W','D') and r4 in ('L','W','D') and
+              			               r5 in ('L','W','D') and r6 in ('L','W','D') and 
+              			               r7 in ('L','W','D'))
+              		          OR 
+                          			 (r1='U' or r2='U' or r3='U' or r4='U' or
+                          				r5='U' or r6='U' or r7='U')) as allplayed_unplayed
+               WHERE df_games_1.player = allplayed_unplayed.player and 
+              	   df.player = df_games_1.opponent
+              ORDER BY player,round"
+
+dbquery <- dbGetQuery(con,sqlresult)
+dbWriteTable(con, "project1_result", dbquery, overwrite = TRUE, row.names = FALSE)
+dbDisconnect(con)
+```
+
+## 4. CSV File
+
+### ELO Chess calculation an expected score in R data frame & writing to CSV file
+
+```{r}
+# Use dataframe in R
+expectedscore <- dbquery %>% select (playername,opponent_name,round, status)%>%
+                mutate(expected_score= 1/(1+10^((dbquery$pre_rating 
+                                                 - dbquery$opponent_pre_rating)/400)))
+# Write AVG to CSV file
+write.csv(expectedscore,"Tdo_Project1_Export.csv")
+```
