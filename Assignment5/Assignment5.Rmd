@@ -1,0 +1,73 @@
+---
+title: "DATA 607-Assignment 5"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## 1. Preparing Data from a provided CSV
+
+```{r library}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+
+
+path <- "https://raw.githubusercontent.com/Trangmis/607/master/Assignment5/israel_vaccination_data_analysis_start.csv"
+csvfile <- read.csv(path)
+```
+
+## Question 1:
+
+**Do you have enough information to calculate the total population?**
+
+Based on the dataset, the total population will include the missing, invalid, or not Full Vax records in the dataset. 
+
+* The total population = $\frac{(NotVaxPopulation + FullVaxPopulation)*100}{NotVaxPercentage+FullVaxPercentage}$
+
+* Excluded population percentage = 100 - (Not Vax population % + Full Vax %)
+* Excluded population = The total population - (Not Vax population + Full Vax)
+
+What does this total population represent?
+
+This total population represents a dataset of an analysis related to an analysis on a vaccine
+
+```{r Question 1}
+mutatedata <-  csvfile %>% 
+  mutate (
+    Excluded_Population_Percentage = 100 - Not_Vax_Population_Percentage-Full_Vax_Population_Percentage,
+    Total_Population = ((Not_Vax_Population + Full_Vax_Population)*100)/(Not_Vax_Population_Percentage + Full_Vax_Population_Percentage),
+    Efficacy_vs_severe_disease =
+                 1-Severe_Full_Vax_per_100K/Severe_Not_Vax_per_100K
+    )
+
+glimpse(mutatedata)
+```
+# Question 2:
+
+**Calculate the Efficacy vs. Disease; Explain your results.**
+
+Efficacy vs. severe disease = 1 - (% fully vaxed severe cases per 100K / % not vaxed severe cases per 100K)
+
+The data shows that vaccine has more efficacy on severe cases of under 50-year-olds while it's opposite to the group of above 50-year-olds. 
+
+```{r Question 2}
+glimpse(csvfile)
+
+head(mutatedata %>% 
+       select (Age,Efficacy_vs_severe_disease))
+
+ggplot(mutatedata, aes(x=Age, y=Efficacy_vs_severe_disease, fill = Age)) + 
+  geom_col(position = "identity")
+```
+
+## Question 3
+
+**From your calculation of efficacy vs. disease, are you able to compare the rate of severe cases in unvaccinated individuals to that in vaccinated?**
+
+Comparing the rate of severe cases in unvaccinated individuals to that of vaccinated is incorrect. Due to individuals can be in one group and there is no relationship to the another. The comparison also shows the inaccurate result if it does not base on the group of age.
