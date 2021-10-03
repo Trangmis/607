@@ -1,0 +1,300 @@
+---
+title: "NATIONAL ARRESTS DATA"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## INTRODUCTION
+
+The observation bases on 3 datasets of totals of reported arrests for the nation from 1995–2016. from https://crime-data-explorer.fr.cloud.gov/pages/downloads
+
+1. Arrest Data - Reported Number of Juvenile Arrests by Crime.
+2. Arrest Data - Reported Number of Adult Arrests by Crime.
+3. Arrest Data - Reported Number of Arrests by Crime.
+
+## 1. Preparing Data
+
+```{r preparing, echo = FALSE}
+library(tidyverse)
+library(reshape2)
+library(ggplot2)
+library(gridExtra)
+library(stringr)
+library(kableExtra)
+
+# # Juvenile by age group
+
+juvenilecsv <- read.csv("https://raw.githubusercontent.com/Trangmis/607/master/Project2/arrests_national_juvenile.csv")
+adultcsv <- read.csv("https://raw.githubusercontent.com/Trangmis/607/master/Project2/arrests_national_adults.csv")
+nationalcsv <- read.csv("https://raw.githubusercontent.com/Trangmis/607/master/Project2/arrests_national.csv")
+
+juvenile <- juvenilecsv %>% 
+  select(year,offense_code,offense_name,population,total_male,total_female,
+         m_0_9,m_10_12,m_13_14,m_15,m_16,m_17,f_0_9,f_10_12,
+         f_13_14,	f_15,	f_16,	f_17) %>%
+  filter(year > 2009)
+
+juvenile_long_df <- juvenile %>% 
+  gather(agegroup,number, m_0_9:f_17)
+
+juvenile_long_df <- juvenile_long_df %>% 
+  mutate (gender = str_sub(agegroup,1,1),
+          agegroup = str_sub(agegroup,3,str_length(agegroup)),
+          ratio_by_gender =     
+            ifelse(gender=='m',number/total_male,number/total_female))
+
+juvenile_long_df[is.na(juvenile_long_df)] = 0
+
+# Juvenile by race
+juvenile_race <- juvenilecsv %>% 
+  select(year,offense_code,offense_name,population,total_male,total_female,
+         race_population,white,	black,asian_pacific_islander,american_indian)%>%
+  filter(year > 2009)
+
+juvenile_race_long_df <- juvenile_race %>% 
+  gather(race,number,  white:american_indian)
+
+juvenile_race_long_df[is.na(juvenile_race_long_df)] = 0
+
+# Adult by age group
+
+adult <- adultcsv %>% 
+  select(year,offense_code,offense_name,population,total_male,total_female,
+         m_18,m_19,m_20,m_21,m_22,m_23,m_24,m_25_29,m_30_34,m_35_39,
+         m_40_44,m_45_49,m_50_54,m_55_59,m_60_64,m_65p,
+         f_18,f_19,f_20,f_21,f_22,f_23,f_24,f_25_29,f_30_34,f_35_39,
+         f_40_44,f_45_49,f_50_54,f_55_59,f_60_64,f_65p)%>%
+  filter(year > 2009)
+
+adult_long_df <- adultcsv %>% 
+  gather(agegroup,number,  m_18:f_65p)
+
+ adult_long_df<- mutate(adult_long_df,
+                        gender = str_sub(agegroup,1,1),
+                        agegroup = str_sub(agegroup,3,str_length(agegroup)),
+                        ratio_by_gender =
+                          ifelse(gender=='m',number/total_male,number/total_female))
+ 
+adult_race <- adultcsv %>% 
+  select(year,offense_code,offense_name,population,total_male,total_female,
+         race_population,white,	black,asian_pacific_islander,american_indian)%>%
+  filter(year > 2009)
+
+adult_race_long_df <- adult_race %>% 
+  gather(race,number,  white:american_indian)
+
+# National
+national_long_df <- nationalcsv %>% 
+  gather(offense_name,number,homicide:curfew_loitering)%>%
+  filter(year > 2009)
+
+national_long_df$offense_name <- str_replace_all(national_long_df$offense_name, '_', ' ')
+```
+
+## 2. Exploring Data
+#### Arrests National Juvenile Dataset
+The total of cases by age and by race should be equal in Arrests National Juvenile dataset. However, the numbers are not the same. There is not enough information to identify what is the gap. The question is if that gap will lead to incorrect results.
+
+```{r juvenile, echo = FALSE,results='asis'}
+temp1 <- juvenile_long_df %>%
+  group_by(year,offense_name,total_male,total_female) %>%
+  summarize(by_age = sum(number))%>%
+  arrange(desc(year),offense_name)
+
+temp2 <- juvenile_race_long_df %>%
+  group_by(year,offense_name,total_male,total_female) %>%
+  summarize(by_race = sum(number))%>%
+  arrange(desc(year),offense_name)
+
+temp1 <- temp1 %>% full_join(temp2, by = c("year","offense_name")) %>%
+  mutate(total_arrests = total_male.x+total_female.x,
+         diffirence = by_race-by_age,ratio = diffirence/(total_arrests))
+
+gap <- temp1 %>% 
+  filter(year==2016)%>%
+  select (year,offense_name,total_arrests,total_male = total_male.x,
+          total_female=total_female.x,by_age,by_race,diffirence,ratio)
+
+gap<-subset(gap, select = 
+                 c(offense_name,total_arrests,by_age,by_race,diffirence,ratio))
+gap <- head(gap,5)
+
+gap %>% 
+  knitr::kable(caption="Juvenile Data Gap Sample - 2016",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+```
+#### Arrests National Adult Dataset
+There is a similar problem of dataset like Arrests National Juvenile Dataset.
+
+```{r adult, echo = FALSE,results='asis'}
+temp1 <- adult_long_df %>%
+  group_by(year,offense_name,total_male,total_female) %>%
+  summarize(by_age = sum(number))%>%
+  arrange(desc(year),offense_name)
+
+temp2 <- adult_race_long_df %>%
+  group_by(year,offense_name,total_male,total_female) %>%
+  summarize(by_race = sum(number))%>%
+  arrange(desc(year),offense_name)
+
+temp1 <- temp1 %>% full_join(temp2, by = c("year","offense_name")) %>%
+  mutate(total_arrests = total_male.x+total_female.x,
+         diffirence = by_race-by_age,ratio = diffirence/(total_arrests))
+
+gap <- temp1 %>% 
+  filter(year==2016)%>%
+  mutate(total_male = total_male.x,total_female=total_female.x)
+
+gap<-subset(gap, select = 
+                 c(offense_name,total_arrests,by_age,by_race,diffirence,ratio))
+gap <- head(gap,5)
+
+gap %>%
+  knitr::kable(caption="Adult Data Gap Sample - 2016",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+```
+
+#### Arrests National Dataset
+There are few notes about the total population
+
+1. There is an unidentified group in the total population.
+
+2. The overlap data in the dataset exists. Will it impact to results? 
+  Ex : an individuals with multiple counts of crime. How does the population define?
+  
+```{r national, echo = FALSE,results='asis'}
+juvenile$offense_name <- tolower(juvenile$offense_name)
+adult$offense_name <- tolower(adult$offense_name)
+temp1 <-national_long_df %>% full_join(juvenile, by = c("year","offense_name"))
+
+temp1 <- mutate(temp1,juvenile_offense_number = total_male + total_female)
+temp1 <- rename(temp1,national_population = population.x,
+             juvenile_population = population.y,
+             national_population = population.x,
+             national_offense_number = number)
+
+temp1<- subset(temp1,select=c(year,offense_name,total_arrests,national_population,
+                              juvenile_population,national_offense_number,
+                              juvenile_offense_number))
+
+alldata<- temp1 %>% full_join(adult, by = c("year","offense_name"))
+
+alldata<- rename(alldata,adult_population = population) 
+alldata<- mutate(alldata,adult_offense_number=total_male+total_female,
+       adult_ratio = adult_offense_number/national_offense_number,
+       juvenile_ratio = juvenile_offense_number/national_offense_number)
+
+alldata<- subset(alldata, !is.na(adult_ratio),
+                 select =c(year,offense_name,national_offense_number,
+                           adult_offense_number,juvenile_offense_number,
+                           adult_ratio,juvenile_ratio))
+
+result <- subset(alldata, year == 2016,
+                 select =c(offense_name,national_offense_number,
+                           adult_offense_number,juvenile_offense_number,
+                           adult_ratio,juvenile_ratio))
+result <- arrange(result, offense_name)
+
+result %>% top_n(5) %>%
+  knitr::kable(caption="Arrests National Data",digits = 2, 
+               format.args = list(big.mark = ",", scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F)
+
+adult_df <- arrange(subset(alldata,
+                           select=c("year","offense_name","adult_ratio")),
+                    year,offense_name)
+adult_df <- arrange(spread(adult_df, year, adult_ratio),offense_name)
+
+adult_df %>%
+knitr::kable(caption="Adult Arrests by Year",digits = 2, 
+               format.args = list(big.mark = ",", scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F,position = "float_left")
+
+juvenile_df <- arrange(subset(alldata,
+                           select=c("year","offense_name","juvenile_ratio")),
+                           year,offense_name)
+juvenile_df <- arrange(spread(juvenile_df, year, juvenile_ratio),offense_name)
+juvenile_df %>%
+knitr::kable(caption="Juvenile Arrests by Year",digits = 2, 
+               format.args = list(big.mark = ",", scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F,position = "right")
+
+```
+#### 
+## 3. Graph
+```{r graph, echo=FALSE}
+#Adult - Juvenile
+ggplot(juvenile_long_df,aes(x=agegroup,y=number))+
+  geom_jitter(aes(color=gender))+
+  facet_wrap(~offense_name,labeller=labeller(offense_name=label_wrap_gen(width=21)))+
+  theme(text=element_text(size=8),axis.text.x=element_text(angle =90))+
+  labs(title="Juvenile Arrests by Crime")+
+  ylab("Number of Arrests")+
+  xlab("Age")
+
+ggplot(adult_long_df,aes(x=agegroup,y=number))+
+  geom_jitter(aes(color=gender))+
+  facet_wrap(~offense_name,labeller=labeller(offense_name=label_wrap_gen(width=21)))+
+  theme(text=element_text(size=7),axis.text.x=element_text(angle =90))+
+  labs(title="Adult Arrests by Crime")+
+  ylab("Number of Arrests")+
+  xlab("Age")
+
+#by race
+ggplot(adult_race_long_df%>% filter(year>=2015),aes(x=year,y=number))+
+  geom_jitter(aes(color=race))+
+  facet_wrap(~offense_name,labeller=labeller(offense_name=label_wrap_gen(width=21)))+
+  theme(text=element_text(size=8),axis.text.x=element_text(angle =90))+
+  labs(title="Adult Arrests by Crime")+
+  ylab("Number of Arrests")+
+  xlab("Year")
+
+ggplot(adult_race_long_df %>% filter(year>=2015),aes(x=offense_name,y=number))+
+  geom_jitter(aes(color=race))+
+  facet_wrap(~year)+
+  labs(title="Adult Arrests by Crime")+
+  theme(text=element_text(size=8),axis.text.x =element_text(angle =90),
+        legend.position="bottom")
+
+ggplot(adult_race_long_df,aes(x=race,y=number))+
+  geom_jitter(aes(color=race))+
+  facet_wrap(~year)+
+  labs(title="Adult Arrests by Crime")+
+  theme(text=element_text(size=8),axis.text.x =element_text(angle =90),
+        legend.position="bottom")
+
+ggplot(national_long_df,aes(x=offense_name,y=number))+
+  geom_jitter(aes(color=offense_name))+
+  facet_wrap(~year)+
+  labs(title="National Arrests by Crime")+
+  theme(text=element_text(size=8),axis.text.x =element_text(angle =90),
+        legend.position="none")
+
+ggplot(national_long_df,aes(x=year,y=number))+
+  geom_jitter(aes(color=offense_name))+
+  labs(title="National Arrests by Crime")+
+  theme(text=element_text(size=8),legend.position="bottom")
+```
+
+## CONCLUSION
+
+1. Juveniles commit the crime the most by ordering at all other offenses, drug abuse, larceny, simple assault, disorderly conduct, burglary, curfew and loitering law violations, liquor laws, vandalism.Data also shows that juvenile males commit crimes more than females. Teenagers from 13 and above involve in crime more than others.
+
+2. Adults commit the most at All other offenses, drug abuse, driving under the influence, simple assault,  drunkenness, liquor laws, aggravated assault, and larceny. Male offend more the female. 23 years old to 50 years old commit the offense more than other ages.Data also shows that white & black break the law more than american-indian & asian pacific islander.
+
+
