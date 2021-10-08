@@ -1,0 +1,19 @@
+{
+   "Books":[
+      {
+         "Book Title":"The Alchemist",
+         "author":"Paulo Cuello",
+         "Reason":"Very interesting plot and characters"
+      },
+      {
+         "Book Title":"Diary of a Madman, Selected Stories of Gogol",
+         "author":"Nikolai Gogol",
+         "Reason":"VInteresting depictions/satirisation/criticism of Russian society and people of the current period"
+      },
+      {
+         "Book Title":"Think",
+         "author":"Simon Blackburn",
+         "Reason":"Thought provoking analysis of philosophical ideas"
+      }
+   ]
+}
