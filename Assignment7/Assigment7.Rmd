@@ -1,0 +1,70 @@
+---
+title: "DATA 607 - ASSIGNMENT 7"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    code_folding: show
+    theme:
+      bg: '#E4FFFA'
+      fg: '#090137'
+      primary: '#370241'
+      base_font:
+        google: Prompt
+      heading_font:
+        google: Proza Libre
+      version: 3
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+if (requireNamespace("thematic")) 
+  thematic::thematic_rmd(font = "auto")
+
+library(rvest)
+library(XML)
+library(methods)
+library(kableExtra)
+```
+## Introduction {.tabset .tabset-pills}
+
+This assignment is a practice R with HTML, XML & JSON. It runs with [`{thematic}`](https://rstudio.github.io/thematic/) installed.
+
+### HTML
+
+```{r HTML}
+myhtml <-read_html("https://raw.githubusercontent.com/Trangmis/607/master/Assignment7/Book.html")
+
+myhtml %>% html_table() %>%
+  knitr::kable(caption="TABLE FROM HTML")%>%
+    kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+
+```
+### XML
+
+```{r XML}
+myxml <- xmlToDataFrame("C:\\Users\\nycdoe\\Desktop\\DATA607\\Books.xml")
+
+myxml %>% 
+  knitr::kable(caption="TABLE FROM XML")%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F)
+
+```
+
+### JSON
+
+```{r JSON}
+library(jsonlite)
+
+myjson <- fromJSON("https://raw.githubusercontent.com/Trangmis/607/master/Assignment7/Books.json")
+
+myjson %>%
+  knitr::kable(caption="TABLE FROM XML")%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+## Conclusion
+JSon Syntax is simplest, and XML syntax is simpler than HTML. In general, all of them need define table, rows, column & column header, and cell value.
