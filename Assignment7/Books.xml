@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Books>
+  <Book>
+    <BookTitle>The Alchemist</BookTitle>
+    <Authors>Paulo Cuello</Authors>
+    <Reason>Very interesting plot and characters</Reason>
+  </Book>
+  <Book>
+    <BookTitle>Diary of a Madman, Selected Stories of Gogol</BookTitle>
+    <Authors>Nikolai Gogol</Authors>
+    <Reason>Interesting depictions/satirisation/criticism of Russian society and people of the current period</Reason>
+   </Book>
+  <Book>
+    <BookTitle>Berry-Berry Belgian Waffles</BookTitle>
+    <Authors>$8.95</Authors>
+    <Reason>Light Belgian waffles covered with an assortment of fresh berries and whipped cream</Reason>
+   </Book>
+  <Book>
+    <BookTitle>Think</BookTitle>
+    <Authors>Simon Blackburn</Authors>
+    <Reason>Thought provoking analysis of philosophical ideas</Reason>
+   </Book>
+ </Books>
