@@ -1,0 +1,173 @@
+---
+title: "DATA 607-Assignment 5 - Resubmission"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## INTRODUCTION
+
+
+## 1. Preparing Data from a provided CSV
+
+```{r library, echo=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(stringr)
+library(kableExtra)
+
+path <- "https://raw.githubusercontent.com/Trangmis/607/master/Assignment5/israeli_vaccination_data_analysis_start.csv"
+csvfile <- read.csv(path,na.strings=c("",0))
+
+csvfile[[3,1]] <-"<50"
+csvfile[[5,1]] <-">50"
+colnames(csvfile)<- c('Age','Not_Vax','Full_Vax',
+                      'Severe_Not_Vax','Severe_Full_Vax','Efficacy')
+
+csvfile <- csvfile %>% replace(is.na(.), 0)
+```
+## 2. Transpose Wide to Long Practice
+```{r Transpose_data,echo = FALSE,results='asis'}
+
+wide_data<- csvfile[(csvfile$Age == "<50" | csvfile$Age == ">50" ) &
+                   !str_detect(csvfile$Not_Vax,"%"),]
+wide_data <- rbind(wide_data,csvfile[(csvfile$Age == "<50" | csvfile$Age == ">50" ) &
+                   str_detect(csvfile$Not_Vax,"%"),])
+
+long_data <- gather(wide_data,key="Category","Value",2:6)
+
+wide_data %>%
+knitr::kable(caption="Data in Wide",digits = 2, 
+               format.args = list(big.mark = ",", scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F)
+
+long_data %>%
+knitr::kable(caption="Data in Long",digits = 2, 
+               format.args = list(big.mark = ",", scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered","striped","condensed"))%>%
+  kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+```{r Working_with_data, echo=FALSE}
+vax_df <- csvfile[(csvfile$Age == "<50" | csvfile$Age == ">50" ) &
+                   !str_detect(csvfile$Not_Vax,"%"),]
+
+#Convert Text to number
+vax_df$Not_Vax <- as.numeric(str_remove_all(vax_df$Not_Vax,","))
+vax_df$Full_Vax <- as.numeric(str_remove_all(vax_df$Full_Vax,","))
+vax_df$Severe_Not_Vax <- as.numeric(vax_df$Severe_Not_Vax)
+vax_df$Severe_Full_Vax <- as.numeric(vax_df$Severe_Full_Vax)
+
+percent_df <- csvfile[(csvfile$Age == "<50" | csvfile$Age == ">50" ) &
+                   str_detect(csvfile$Not_Vax,"%"),]
+
+percent_df$Not_Vax <- as.numeric(sub("%", "",percent_df$Not_Vax,fixed=TRUE))/100
+percent_df$Full_Vax <- as.numeric(sub("%", "",percent_df$Full_Vax,fixed=TRUE))/100
+percent_df$Severe_Not_Vax <- as.numeric(percent_df$Severe_Not_Vax)
+percent_df$Severe_Full_Vax <- as.numeric(percent_df$Severe_Full_Vax)
+
+vax_df %>% 
+  knitr::kable(caption="Population",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+
+percent_df %>% 
+  knitr::kable(caption="Percentage",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+
+wide <- vax_df %>% 
+  full_join(percent_df, by ="Age")
+
+wide$Severe_Not_Vax.y <- wide$Severe_Not_Vax.x*100000/wide$Not_Vax.x
+wide$Severe_Full_Vax.y <- wide$Severe_Full_Vax.x*100000/wide$Full_Vax.x
+wide$Efficacy.y <- (1 - wide$Severe_Full_Vax.y/wide$Severe_Not_Vax.y)
+
+vax_df <- subset(wide %>%
+                  mutate(Total_population = 
+                           (Not_Vax.x + Full_Vax.x)/(Not_Vax.y+Full_Vax.y)),
+                select=c(Age, Not_Vax.x,Full_Vax.x,Severe_Not_Vax.x,
+                         Severe_Full_Vax.x,Total_population,Efficacy.x))
+vax_df <- vax_df %>%
+  rename( Not_Vax = Not_Vax.x, Full_Vax = Full_Vax.x,Severe_Not_Vax = Severe_Not_Vax.x,
+          Severe_Full_Vax = Severe_Full_Vax.x, Efficacy = Efficacy.x)
+
+percent_df <- subset(wide %>%
+                  mutate(Total_population = 0),
+                  select=c(Age, Not_Vax.y,Full_Vax.y,Severe_Not_Vax.y,
+                         Severe_Full_Vax.y,Total_population,Efficacy.y))
+percent_df <- percent_df %>%
+  rename( Not_Vax = Not_Vax.y, Full_Vax = Full_Vax.y,Severe_Not_Vax = Severe_Not_Vax.y,
+          Severe_Full_Vax = Severe_Full_Vax.y, Efficacy = Efficacy.y)
+
+total <- vax_df %>%
+        summarise(Age = "Total", Not_Vax=sum(Not_Vax),Full_Vax=sum(Full_Vax),
+                  Severe_Not_Vax = sum(Severe_Not_Vax),
+                  Severe_Full_Vax = sum(Severe_Full_Vax),
+                  Total_population=0,Efficacy=0)
+
+total [nrow(total ) + 1,] = c("Total",total$Not_Vax/sum(vax_df$Total_population),
+                              total$Full_Vax/sum(vax_df$Total_population),
+                              total$Severe_Not_Vax*100000/total$Not_Vax,
+                              total$Severe_Full_Vax*100000/total$Full_Vax,0,
+                              1-(total$Severe_Full_Vax/total$Full_Vax)/
+                                (total$Severe_Not_Vax/total$Not_Vax))
+
+total <- rbind(vax_df,percent_df,total)
+total$Not_Vax <- as.numeric(total$Not_Vax)
+total$Full_Vax <- as.numeric(total$Full_Vax)
+total$Severe_Not_Vax <- as.numeric(total$Severe_Not_Vax)
+total$Severe_Full_Vax <- as.numeric(total$Severe_Full_Vax)
+total$Total_population <- as.numeric(total$Total_population)
+total$Efficacy <- as.numeric(total$Efficacy)
+
+total <- total %>% arrange(Age)
+```
+
+## Question 1:
+
+What does this total population represent?
+
+The total population is included people who are not vaccinated, fully vaccinated, or one dose of vaccine. The eligible age is 12 year old and above.
+
+```{r Question_1 , echo=FALSE}
+ total %>% filter (Age=='Total')%>% 
+  knitr::kable(caption="Total Population",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+
+```
+# Question 2:
+
+**Calculate the Efficacy vs. Disease; Explain your results.**
+
+According to the result, the vaccine is more effective in the group 50 years old and below then the group 60 years old and above. 
+```{r Question 2, echo = FALSE}
+total %>%
+  knitr::kable(caption="Survey Results",digits = 2,
+               format.args = list(big.mark = ",",scientific = FALSE))%>%
+  kable_styling(bootstrap_options = c("hover","bordered"))%>%
+  kable_paper(html_font="arial",
+              font_size=10,full_width = F)
+
+```
+
+## Question 3
+
+From your calculation of efficacy vs. disease, are you able to compare the rate of severe cases in unvaccinated individuals to that in vaccinated 
+
+The rate of severe cases in unvaccinated individuals are different to that in vaccinated by group of Age. Especialy, This data set shows a surprised difference of rate  of severe cases between unvaccinated an vaccinated individuals in the whole population to each group, and it might cause incorrect conclusion.
