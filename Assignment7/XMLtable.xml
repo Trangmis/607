@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Books>
+  <row>
+    <BookTitle>Belgian Waffles</BookTitle>
+    <Authors>$5.95</Authors>
+    <Reason>Two of our famous Belgian Waffles with plenty of real maple syrup</Reason>
+  </row>
+  <row>
+    <BookTitle>Strawberry Belgian Waffles</BookTitle>
+    <Authors>$7.95</Authors>
+    <Reason>Light Belgian waffles covered with strawberries and whipped cream</Reason>
+    <calories>900</calories>
+  </row>
+  <row>
+    <BookTitle>Berry-Berry Belgian Waffles</BookTitle>
+    <Authors>$8.95</Authors>
+    <Reason>Light Belgian waffles covered with an assortment of fresh berries and whipped cream</Reason>
+    <calories>900</calories>
+  </row>
+  <row>
+    <BookTitle>French Toast</BookTitle>
+    <Authors>$4.50</Authors>
+    <Reason>Thick slices made from our homemade sourdough bread</Reason>
+    <calories>600</calories>
+  </row>
+  <row>
+    <BookTitle>Homestyle Breakfast</BookTitle>
+    <Authors>$6.95</Authors>
+    <Reason>Two eggs, bacon or sausage, toast, and our ever-popular hash browns</Reason>
+    <calories>950</calories>
+  </row>
+</Books>
