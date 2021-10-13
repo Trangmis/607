@@ -1,0 +1,105 @@
+---
+title: "Scrapping Data From Job Websites"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r library}
+library(rvest)
+library(dplyr)
+library(tidyverse)
+library(xml2)
+library(stringr)
+jobs.data<- data.frame(source=character(),
+                job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.salary=double(),
+                job.description=character())
+```
+
+```{r Scrapping-Indeed}
+Indeed_data<-data.frame(job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.description=character(),
+                result.content=character(),
+                job.seen.beacon=character(),
+                job.id=character())
+pagenumber <- 0
+
+for (i in 0:100) {
+    temp = as.character(i*10)
+    link <- "https://www.indeed.com/jobs?q=data%20scientist&start=" 
+    link <- paste(link,temp,sep="")
+    print(link)
+    page <- read_html(link)
+ 
+    jobcards<-page %>%html_node(xpath='//*[@id="mosaic-provider-jobcards"]') %>%
+                  html_children()
+
+    getdetailjob <- xml_attrs(jobcards)
+      
+    jobid<-data.frame(job.id=getdetailjob[[1]][1])
+                             
+    for (j in 2:(length(getdetailjob)-1)){
+      tempv <- getdetailjob[[j]][1]
+      if (str_detect(tempv,'job_|sj_')) {
+        jobid <-rbind(jobid,getdetailjob[[j]][1])
+       }  
+    }  
+    
+    #View(jobid)  
+   tempdf<-data.frame(job.title=trimws(page %>% 
+                            html_nodes(".jobTitle-color-purple > span")  %>% 
+                            html_text()),
+                     company.name=trimws(page %>% 
+                            html_nodes(".companyName")  %>% 
+                            html_text()),
+                     location=trimws(page %>% 
+                            html_nodes(".companyLocation") %>%
+                            html_text()),
+                     job.description=trimws(page %>% html_nodes(".job-snippet") %>%
+                            html_text()),
+                     job.seen.beacon=trimws(page %>%html_nodes(".job_seen_beacon")%>%
+                            html_text())
+                    )
+  
+   pagenumber = pagenumber + nrow(tempdf)
+   print(i)
+   tempdf <- cbind(tempdf,jobid)
+   Indeed_data <- rbind(Indeed_data, tempdf)
+}
+
+Indeed_data<-Indeed_data %>%
+  mutate(location.type="")
+
+Indeed_data$location.type= ifelse (str_detect(Indeed_data$location,"Remote")==TRUE,"Remote", "" )
+
+Indeed_data$location<-str_replace(Indeed_data$location,"Remote","")
+
+View(Indeed_data)    
+write.csv(Indeed_data,"~/Desktop/Indeed_data.csv")
+
+```
+
+```{r cleaning-data}
+csvfile <- "https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/csv/Indeed_data.csv"
+Indeed <- read.csv(csvfile)
+
+Indeed <- Indeed %>% mutate(salary="")
+
+test <-c("dfgfgd $1,000,000 kjhkjhkh","jdhkfshdfj$1,000 - $100,000 jhjgjhvv")
+str_view(test,"(([0-9]{3}|[0-9]{2}|[0-9]{1})(,)([0-9]{3}|[0-9]{2}|[0-9]{1}))")
+```
+

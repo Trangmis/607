@@ -1,0 +1,89 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+library(rvest)
+library(dplyr)
+library(tidyverse)
+library(xml2)
+
+link = "https://www.imdb.com/search/title/?num_votes=1000,2500"
+page = read_html(link)
+movies <- page %>% html_nodes(".lister-item-header a") %>% html_text()
+
+# LinkedIn
+link = "https://www.linkedin.com/jobs/search?keywords=Data%20Scientist&location=Queens%2C%20New%20York%2C%20United%20States&geoId=&trk=homepage-jobseeker_jobs-search-bar_search-submit&position=1&pageNum=0"
+
+page = read_html(link)
+page %>% html_node(".results-context-header__context") %>%
+  html_text()
+
+page %>% html_nodes(".base-card__full-link") %>%
+  html_text()
+page %>% html_nodes(".base-card__full-link") %>%
+  html_text2()
+
+page %>% html_nodes(".base-search-card__metadata")%>%
+  html_text()
+page %>% html_nodes(".base-search-card__metadata")%>%
+  html_text2()
+  
+page %>% html_nodes(".job-search-card__location")%>%
+  html_text2()
+
+page %>% html_nodes(".job-search-card__benefits")%>%
+  xml_children()
+
+# Indeed
+link = "https://www.indeed.com/jobs?l=New%20York%20State&vjk=ae3c34627b58db77"
+page = read_html(link)
+#write_xml(page,"indeed.html")
+
+job.title <- page %>% 
+      html_nodes(".jobTitle-color-purple > span")  %>% 
+      html_text() %>%
+      trimws -> job.title
+
+company.name <- page %>% 
+      html_nodes(".companyName")  %>% 
+      html_text() %>%
+      trimws -> company.name
+
+company.location <- page %>% 
+      html_nodes(".companyLocation") %>%
+      html_text() %>%
+      trimws -> company.location
+
+domain_value = link
+read_html(domain_value) %>%
+  html_nodes('ul li') %>%
+  html_text('target.job') 
+
+# Main data for project
+df <- read.csv("https://query.data.world/s/jiftl3es4ylyn7niswrabwthcj3sle", header=TRUE, stringsAsFactors=FALSE);
+
+View(df)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

@@ -1,0 +1,121 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r library}
+library(rvest)
+library(dplyr)
+library(tidyverse)
+library(xml2)
+
+jobs.data<- data.frame(source=character(),
+                job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.salary=double(),
+                job.description=character())
+```
+
+```{r Scrapping-LinkedIn}
+# LinkedIn
+
+for (i in 0:10) {
+    temp = as.character(i)
+    link <- "https://www.linkedin.com/jobs/search?keywords=Data%20Scientist&location=&geoId=&trk=public_jobs_jobs-search-bar_search-submit&position=1&pageNum=" 
+    
+    link <- paste(link,temp,sep="")
+    print(link)
+    read_html(link)
+    
+    page %>% html_node(".results-context-header__context") %>%
+      html_text()
+    
+    page %>% html_nodes(".base-card__full-link") %>%
+      html_text()
+    page %>% html_nodes(".base-card__full-link") %>%
+      html_text2()
+    
+    page %>% html_nodes(".base-search-card__metadata")%>%
+      html_text()
+    page %>% html_nodes(".base-search-card__metadata")%>%
+      html_text2()
+      
+    page %>% html_nodes(".job-search-card__location")%>%
+      html_text2()
+    
+    page %>% html_nodes(".job-search-card__benefits")%>%
+      xml_children()
+}
+```
+  
+```{r Scrapping-Indeed}
+ Indeed_data<-data.frame(job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.description=character(),
+                result.content=character(),
+                dateposted = character())  
+for (i in 0:100) {
+    temp = as.character(i)
+    link <- "https://www.indeed.com/jobs?q=data%20scientist&start=" 
+    link <- paste(link,temp,sep="")
+    print(link)
+    read_html(link)
+
+  #write_xml(page,"indeed.html")
+  tempdf<-data.frame(job.title=trimws(page %>% 
+                            html_nodes(".jobTitle-color-purple > span")  %>% 
+                            html_text()),
+                     company.name=trimws(page %>% 
+                            html_nodes(".companyName")  %>% 
+                            html_text()),
+                     location=trimws(page %>% 
+                            html_nodes(".companyLocation") %>%
+                            html_text()),
+                     job.description=trimws(page %>% html_nodes(".job-snippet") %>%
+                            html_text()),
+                     result.content=trimws(page %>%html_nodes(".resultContent")%>%
+                            html_text()),
+                     dateposted=trimws(page %>%html_nodes(".date")%>%
+                            html_text())
+                    )
+   Indeed_data <- rbind(Indeed_data,  tempdf)
+}
+
+View( Indeed_data)    
+```
+
+```{r}
+trimws(page %>% 
+          html_nodes("#mosaic-provider-jobcards :nth-child(1)") %>%
+          html_text())
+  
+    
+# Main data for project
+df <- read.csv("https://query.data.world/s/jiftl3es4ylyn7niswrabwthcj3sle", header=TRUE, stringsAsFactors=FALSE);
+
+View(df)
+
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
