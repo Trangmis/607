@@ -1,0 +1,306 @@
+---
+title: "Project 3: Value Skills in Data Science"
+author: "Teams 5 - Leticia Salazar,Victoria McEleney, Javier Pajuelo,Trang Do,Cassandra Boylan"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+```
+# **Project – Data Science Skills**
+
+##### W. Edwards Deming said, “In God we trust, all others must bring data.” **Please use data to answer the question, “Which are the most valued data science skills?”** Consider your work as an exploration; there is not necessarily a “right answer.”
+
+#### Objective: As a group our we worked on answering the question "Which are the most valued data science skills?" We looked into a dataset from [Data.World](https://data.world/jobspikr/10000-data-scientist-job-postings-from-the-usa/workspace/file?filename=data_scientist_united_states_job_postings_jobspikr.csv] and a downloaded HTML files from Indeed [https://www.indeed.com/jobs?l=New%20York%20State&vjk=ae3c34627b58db77) and from [Indeed.com](https://www.indeed.com/jobs?q=data%20scientist&start=). Once the data sets were aquired we tidied and transformed the dataset and performed visualization. Finally, we analyzed the datasets, which you'll see towards the end.
+
+##### Collaboration tools: Our team collaborated virtually through Zoom meetings, Slack and GitHub. We also utilized R and MySQL as software tools.
+
+### We install our libraries
+
+```{r}
+#Load Libraries
+library(tidyr)
+library(dplyr)
+library(textdata)
+library(knitr)
+library(tidyverse)
+library(wordcloud)
+library(RColorBrewer)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(png)
+library(digest)
+library(DBI)
+library(kableExtra)
+```
+
+# Data source 
+This discussion bases on dataset from https://data.world/
+
+# Loading the data from GitHub
+```{r}
+jobspikr_url = 'https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/data_scientist_united_states_job_postings_jobspikr.csv'
+
+jobspikr_small_url = 'https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/data_scientist_jobspikr_10152021_merged.csv'
+
+jobspikr_data <- read_csv(jobspikr_small_url)
+
+glimpse(jobspikr_data )
+
+jobspikr_data $state[toupper(jobspikr_data $state)=="CALIFORNIA"]<-"CA"
+jobspikr_data $state[toupper(jobspikr_data $state)=="NEW YORK"]<-"NY"
+jobspikr_data $state[toupper(jobspikr_data $state)=="COLORADO"]<-"CO"
+jobspikr_data $state[toupper(jobspikr_data $state)=="MARYLAND"]<-"MD"
+jobspikr_data $state[toupper(jobspikr_data $state)=="ILLINOIS"]<-"IL"
+jobspikr_data $state[is.na(jobspikr_data $state)|jobspikr_data $state==""]<-"unknown"
+
+jobspikr_data $inferred_salary_time_unit[jobspikr_data $inferred_salary_time_unit==""]<-"unknown"
+```
+# Create Tables & write data to SQL
+```{r} 
+db <- 'project3'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+test<-strsplit(jobspikr_data $inferred_skills, split = "\\|")
+
+skillset <-data.frame(skill=character())
+s <-length(test)
+
+for (i in 1:s){
+  for (j in 1:lengths(test[i])){
+    rows<-data.frame(skill=test[[i]][j])
+    skillset <-rbind(skillset,rows)
+  }  
+}
+
+skill_types<-skillset %>% select(skill) %>%
+      group_by(skill)%>%
+      summarise(n=n())  
+
+skill_types<-skill_types %>% mutate(skillid=sapply(skill_types$skill, digest, algo="md5"))
+
+skill_types<-skill_types %>% select(skillid,skill) 
+dbWriteTable(con,'skill_types',skill_types,overwrite=TRUE)
+
+# --------------
+skill_company <-data.frame(company=character(),state=character())
+
+test <-jobspikr_data  %>% select (company_name,inferred_skills,state)%>%
+    filter(inferred_skills!="")
+
+datarow<-nrow(test)
+
+for (i in 1:datarow){
+  infer_byrow <-c(skill=strsplit(test[[i,2]], split = "\\|")) 
+  rows<-data.frame(skill=infer_byrow,company=test[[i,1]],state=test[[i,3]])
+  skill_company <-rbind(skill_company,rows)
+}
+
+companies<-skill_company %>% 
+  select(company)%>%group_by(company)%>%
+  summarise(n=n())
+
+companies<-as.data.frame(companies %>% mutate(companyid=sapply(companies$company, digest, algo="md5")))
+
+companies<-companies %>% select(companyid,company) 
+dbWriteTable(con,'companies',companies,overwrite=TRUE)
+
+job_df <-data.frame()
+tempskill_company <- data.frame()
+for (i in 1:length(companies$company)){
+  test <- jobspikr_data  %>%
+    filter(company_name==companies$company[[i]])%>%
+    mutate(companyid=companies$companyid[[i]])
+  job_df <- rbind(job_df,test)
+  
+  tmp <-skill_company %>% 
+    filter(company==companies$company[[i]])%>%
+    mutate(companyid=companies$companyid[[i]])
+  tempskill_company <- rbind(tempskill_company,tmp)
+}
+
+dbWriteTable(con,'jobs',job_df,overwrite=TRUE)
+
+skill_company_table<-data_frame()
+for (i in 1:length(skill_types$skill)){
+  tmp <-tempskill_company %>% 
+    filter(skill==skill_types$skill[[i]])%>%
+    mutate(skillid=skill_types$skillid[[i]])
+  skill_company_table <- rbind(skill_company_table,tmp)
+}  
+
+dbWriteTable(con,'Skills_companies',skill_company_table,overwrite=TRUE)
+
+```
+# Highest pay based on yearly salary data
+
+```{r}
+salary_jobtitle<- jobspikr_data %>%  
+  select(job_title,inferred_salary_time_unit,inferred_salary_currency,inferred_salary_to)%>%
+  filter(inferred_salary_time_unit == 'yearly', inferred_salary_currency=='USD')%>%
+  group_by(job_title)%>%
+  summarise(max=max(inferred_salary_to))%>%
+  arrange(desc(max))
+
+top_n(salary_jobtitle%>% mutate(Salary=format(salary_jobtitle$max,big.mark=",")),10) %>%
+   select(job_title,Salary)%>%
+   knitr::kable(caption="Salary Table")%>%
+   kable_styling(bootstrap_options = c("bordered","striped"))%>%
+   kable_paper(html_font="arial",font_size=10,full_width = F)
+
+```
+# Plots
+
+```{r}
+word_freq<- skillset %>% group_by(skill)%>%
+  summarise(wfreq=n()) 
+# Plots #
+ggplot(word_freq, aes(wfreq),horizontal = TRUE) + 
+  geom_histogram()
+ggplot(skillset,aes(skill))+
+  geom_bar()
+ggplot(top_n(word_freq,35), aes(x=reorder(skill,wfreq),y = wfreq)) + 
+  geom_bar(stat='identity',fill="olivedrab")+
+  coord_flip()+
+  ylab("Count")+
+  xlab("Skills")+
+  theme_tufte()+
+  ggtitle("Valued Skills in Data Science")  
+
+# Word Cloud #
+png("wordcloud.png",width = 12, height = 8,units = "in", res=300)
+par(mar=rep(0,4))
+set.seed(10142021)
+word_freq <- word_freq %>% arrange(desc(wfreq))
+wordcloud(word_freq$skill,freq = word_freq$wfreq,scale=c(3.5,0.25),
+          colors=brewer.pal(8,"Dark2"))
+wordcloud_pic <- '/Users/admin/Downloads/wordcloud.png'
+include_graphics(wordcloud_pic)
+```
+# Required Skills by State ex: ("CA","NY","TX","NE","FL","NJ","MA")
+
+```{r}
+company_state <- skill_company_table %>% select(companyid,state)%>%
+  group_by(companyid,state) %>%
+  summarise(skill_count=n())  
+
+company_state <- company_state %>% mutate(ratio= skill_count/sum(skill_count))
+
+ggplot(company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA")) , aes(sample=skill_count))+
+  stat_qq(aes(color =state))+
+  stat_qq_line(aes(color = state))+
+  facet_grid(~state)
+```
+
+# Let see LM function
+
+```{r}
+#------- Ratio to whole dataset
+company_state <- skill_company_table %>% select(companyid,state)%>%
+  group_by(companyid,state) %>%
+  summarise(skill_count=n())  
+
+company_state <- company_state %>% mutate(ratio= skill_count/sum(skill_count))
+
+ggplot(company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA")) , aes(sample=skill_count))+
+  stat_qq(aes(color =state))+
+  stat_qq_line(aes(color = state))+
+  facet_grid(~state)
+
+lm_company_state <- lm(ratio~state,data=company_state)
+summary(lm_company_state)
+
+lmplot<- company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA"))
+        
+ggplot(data = lmplot, aes(x = skill_count, y = ratio)) +
+  geom_jitter() +
+  geom_smooth(method = "lm")+
+  facet_grid(~state)+
+  xlab("Skills")+
+  ylab("Ratio")+
+  theme(axis.text.x = element_text(size=5),
+        axis.text.y = element_text(size=5),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8))
+#------- Ratio by State
+company_state <- company_state %>% 
+  group_by(state)%>%
+  mutate(ratio= skill_count/sum(skill_count))
+
+lm_company_state <- lm(ratio~state,data=company_state)
+summary(lm_company_state)
+
+lmplot<- company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA"))
+        
+ggplot(data = lmplot, aes(x = skill_count, y = ratio)) +
+  geom_jitter() +
+  geom_smooth(method = "lm")+
+  facet_grid(~state)+
+  xlab("Skills")+
+  ylab("Ratio")+
+  theme(axis.text.x = element_text(size=5),
+        axis.text.y = element_text(size=5),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8))
+```
+
+
+# Scrap data from Indeed website & sample results
+Codes in detail as below
+https://github.com/quaere1verum/sps_public/blob/master/data607-001/assignments/project3/Extract_From_Indeed.Rmd
+
+```{r}
+csvfile <- "https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/csv/Indeed_data.csv"
+
+Indeed <- read.csv(csvfile)
+
+Indeed <-Indeed %>% slice_max(Indeed$job.description, n = 300)
+
+Indeed$job.description<-str_replace_all(Indeed$job.description, "\\n", " and ")
+Indeed$job.description<-str_replace_all(Indeed$job.description,"\\.","")
+Indeed$job.description<-str_replace_all(Indeed$job.description,":","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You will","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You'll","") 
+Indeed$job.description<-gsub("[…]","",Indeed$job.description)
+
+words<-data.frame(w=character())
+words<-strsplit(Indeed$job.description,split = "and|,")
+
+skillset <-data.frame(skill=character())
+s <-length(words)
+
+for (i in 1:s){
+  for (j in 1:lengths(words[i])){
+    rows<-data.frame(skill=str_trim(words[[i]][j]))
+    skillset <-rbind(skillset,rows)
+  }  
+}
+
+word_freq<- skillset %>% group_by(skill)%>%
+  summarise(wfreq=n()) 
+
+png("Indeed_wordcloud.png",width = 12, height = 8,units = "in", res=300)
+par(mar=rep(0,4))
+set.seed(10142021)
+word_freq <- word_freq %>% arrange(desc(wfreq))
+
+#set.seed
+set.seed(87)
+wordcloud(word_freq$skill,freq = word_freq$wfreq,scale=c(3.5, 0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+wordcloud_pic <- '/Users/admin/Project 3 Presentation/Indeed_wordcloud.png'
+include_graphics(wordcloud_pic)
+```
+
+# Conclusion
+To answer our initial question "Which are the most valued data science skills?" from our datasets [Data.World](https://data.world/jobspikr/10000-data-scientist-job-postings-from-the-usa/workspace/file?filename=data_scientist_united_states_job_postings_jobspikr.csv] and a downloaded HTML files from Indeed [https://www.indeed.com/jobs?l=New%20York%20State&vjk=ae3c34627b58db77) and from [Indeed.com](https://www.indeed.com/jobs?q=data%20scientist&start=) we were able to conclude that software skills: Python, Machine Learning and SQL rank amongst the highest as well as general skills: analysis, statistics, design, research and management.
+...
+

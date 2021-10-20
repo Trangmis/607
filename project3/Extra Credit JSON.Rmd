@@ -1,0 +1,183 @@
+---
+title: "EXTRA CREDIT - NOBEL WINNER"
+author: "TRANG DO"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+### INTRODUCTION
+
+more pratice wit JSON by using APIs at https://www.nobelprize.org/.
+
+The Nobel Winners are provided at https://www.nobelprize.org/ through APIs
+
+* https://api.nobelprize.org/2.1/nobelPrizes
+
+* https://api.nobelprize.org/2.1/laureates
+
+### Loading libraries
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+library(jsonlite)
+library(httr2)
+library(stringr)
+library(httr)
+library(kableExtra)
+```
+### Reading Data
+```{r Reading_data, message = FALSE, warning = FALSE}
+ #---- Reading first 
+nobelprize<-fromJSON("https://api.nobelprize.org/2.1/nobelPrizes")
+
+meta <-data.frame(nobelprize$meta)
+links_url<-nobelprize$links
+nobelprizes<-data.frame(nobelprize$nobelPrizes)    
+nobelprize_df <- nobelprizes %>% unnest(category,categoryFullName,laureates,links)
+nobelprize_df <- nobelprize_df %>% unnest(knownName,motivation,orgName,links)
+
+endvalue=meta$count/25
+topmotivation_tbl <-data.frame()
+
+for (i in 1:endvalue){
+  #print(i)
+  nobelprize<-fromJSON(toString(links_url$'next'))
+  links_url<-nobelprize$links
+  nobelprizes<-data.frame(nobelprize$nobelPrizes)   
+  temp <- nobelprizes %>% unnest(category,categoryFullName,laureates,links)
+  temp <- temp %>% unnest(knownName,motivation,links)
+    
+  if ("orgName" %in% names(temp)){  
+    #print("orgName")
+    temp <- temp %>% unnest(orgName,names_repair = tidyr_legacy)
+    names(temp)[names(temp) =="orgName.en"] <- "en4"
+    names(temp)[names(temp) =="orgName.no"] <- "no3"
+    #print(1)
+  }  
+  #print(2)
+  if ("topMotivation" %in% names(temp)){
+    if (is.null(topmotivation_tbl)) {
+      topmotivation_tbl<-temp %>% select (id,topMotivation) %>%unnest(topMotivation)
+    }else
+    { 
+      topmotivation_tmp<-temp %>% select (id,topMotivation) %>%unnest(topMotivation)
+      if ("se" %in% names(topmotivation_tmp)){
+        topmotivation_tmp <- subset(topmotivation_tmp, select = -c(se)) 
+      }    
+      topmotivation_tbl <- rbind(topmotivation_tbl,topmotivation_tmp)
+    }
+    temp <- subset(temp, select = -c(topMotivation)) 
+  }
+  
+  if ("topMotivation" %in% names(temp)){
+    if (is.null(topmotivation_tbl)) {
+      topmotivation_tbl<-temp %>% select (id,topMotivation) %>%unnest(topMotivation)
+    }else
+    { 
+      topmotivation_tmp<-temp %>% select (id,topMotivation) %>%unnest(topMotivation)
+      topmotivation_tbl <- rbind(topmotivation_tbl,topmotivation_tmp)
+    }
+    temp <- subset(temp, select = -c(topMotivation)) 
+  }
+  
+  if (!("en4" %in% names(temp))) {
+       temp<-temp %>% add_column("en4"=NA)
+    }
+  if (!("no3" %in% names(temp))) {
+     temp<-temp %>% add_column("no3"=NA)
+  }
+  # drop this data because it won't be used
+  if ("no4" %in% names(temp)){
+    temp <- subset(temp, select = -c(no4))
+    }
+                             
+  if ("topMotivation.se" %in% names(temp)){
+      temp <- subset(temp, select = -c(topMotivation.se)) 
+  }    
+  
+  nobelprize_df <- rbind(nobelprize_df,temp)
+  #print('--------')
+} 
+
+#-----
+nobel_list<-nobelprize_df %>%
+  select(awardYear,id,en2,en,en1,prizeAmount,prizeAmountAdjusted,portion,
+         en3,dateAwarded)
+
+colnames(nobel_list)<-c("Award.Year","Winner.Id","Full.Name","Field","Prize","Prize.Amount",
+                        "Prize.Amount.Adjusted","Prize.Share","Motivation","Date.Awarded")
+
+nobelprize_df %>% slice_head(n = 5) %>%
+    knitr::kable(caption="Sample of Raw Data from Nobel API")%>%
+    kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+
+
+```
+### Nobel Winners
+
+##### 1.Who did what?
+
+```{r who_did_what}
+nobel_list %>% arrange(Award.Year) %>%
+   knitr::kable(caption="Who did what?")%>%
+   kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+   kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+##### 2.Nobel Winners by Field
+
+```{r nobel_winner_by_field}
+nobel_list %>% select(Field) %>%
+  group_by(Field) %>%
+  summarise(Winner=n()) %>%
+  knitr::kable(caption="Nobel Winner Summary")%>%
+   kable_styling(bootstrap_options = c("bordered","striped"))%>%
+   kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+#### Youngest/Oldest Nobel Winner
+```{r young_old_winner}
+
+nobel_list <- nobel_list %>% mutate(DOB=NA,age=0)
+  #for (i in 1:length(nobel_list$Winner.Id)){
+  # -- Code ran to get data --> for (i in 1:length(nobel_list$Winner.Id)){
+  # For knitting purpose change to --> for (i in 1:3){
+  for (i in 1:3){
+    if (is.na(nobelprize_df$href1[[i]])==FALSE){
+        url=toString(nobelprize_df$href1[[i]])
+        laureates=fromJSON(url)
+        laureates_df<-as.data.frame(laureates)
+        colnames(laureates_df)<-str_replace_all(colnames(laureates_df),"laureates.","")
+        names(laureates_df)[names(laureates_df) == "id"] <- "Winner.Id"
+        
+        if ("birth" %in% names(laureates_df)) {
+            laureates_df.birth<- laureates_df %>% 
+                              select(Winner.Id,birth) %>% unnest(birth)
+        
+            nobel_list$DOB[nobel_list$Winner.Id==laureates_df.birth$Winner.Id]<-laureates_df.birth$date
+        }    
+    }  
+  }
+
+# write.csv(nobel_list,"~/Desktop/nobel_list.csv")
+csvpath<-"https://raw.githubusercontent.com/Trangmis/607/master/Extra_Credit_Nobel_List/nobel_list.csv"
+nobel_list <- read_csv(csvpath)
+
+nobel_list %>% select(Winner.Id,Full.Name,Prize,Motivation,DOB,Date.Awarded) %>%
+        filter(is.na(Date.Awarded)==FALSE & is.na(DOB)==FALSE) %>%
+        mutate(Awared.at.age=as.numeric(as.Date(Date.Awarded) - as.Date(DOB)) %/% 365.25)%>%
+        arrange(Awared.at.age)%>%
+        knitr::kable(caption="Youngest Nobel Winner")%>%
+              kable_styling(bootstrap_options = c("bordered","striped"))%>%
+              kable_paper(html_font="arial",font_size=10,full_width = F)
+
+nobel_list %>% select(Winner.Id,Full.Name,Prize,Motivation,DOB,Date.Awarded) %>%
+        filter(is.na(Date.Awarded)==FALSE & is.na(DOB)==FALSE) %>%
+        mutate(Awared.at.age=as.numeric(as.Date(Date.Awarded) - as.Date(DOB)) %/% 365.25)%>%
+        arrange(desc(Awared.at.age))%>%
+        knitr::kable(caption="Oldest Nobel Winner")%>%
+              kable_styling(bootstrap_options = c("bordered","striped"))%>%
+              kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+
+

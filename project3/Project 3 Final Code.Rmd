@@ -1,0 +1,638 @@
+---
+title: "Project 3"
+authors and collaborators:Leticia Salazar,Victoria McEleney, Javier Pajuelo,
+  Trang Do,Cassandra Boylan,
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    theme: journal
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### **Project – Data Science Skills**
+
+
+##### W. Edwards Deming said, “In God we trust, all others must bring data.” **Please use data to answer the question, “Which are the most valued data science skills?”** Consider your work as an exploration; there is not necessarily a “right answer.”
+
+#### Objective: As a group our we worked on answering the question "Which are the most valued data science skills?" We looked into a dataset from [Data.World](https://data.world/jobspikr/10000-data-scientist-job-postings-from-the-usa/workspace/file?filename=data_scientist_united_states_job_postings_jobspikr.csv] and a downloaded HTML files from Indeed [https://www.indeed.com/jobs?l=New%20York%20State&vjk=ae3c34627b58db77) and from [Indeed.com](https://www.indeed.com/jobs?q=data%20scientist&start=). Once the data sets were aquired we tidied and transformed the dataset and performed visualization. Finally, we analyzed the datasets, which you'll see towards the end.
+
+##### Collaboration tools: Our team collaborated virtually through Zoom meetings, Slack and GitHub. We also utilized R and MySQL as software tools.
+
+
+#### We install our libraries
+```{r}
+library(tidyverse)
+library(curl)
+#install.packages("tm") # if not already installed
+library(tm)
+
+load_csv_from_url <- function(url_path)
+{
+  tmp <- tempfile()
+  curl_download(url_path, tmp)
+  read_csv(tmp)
+}
+```
+
+
+#### Loading the data from GitHub
+```{r}
+jobspikr_url = 'https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/data_scientist_united_states_job_postings_jobspikr.csv'
+
+jobspikr_small_url = 'https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/data_scientist_jobspikr_10152021_merged.csv'
+
+
+jobspikr_data <- load_csv_from_url(jobspikr_small_url)
+```
+
+
+#### Tidying Data.World Data
+```{r}
+#Getting inferred_skills column from dataset
+get_inferred_skills <- function(jobspikr_data)
+{
+  inferred_skills <- jobspikr_data[['inferred_skills']]
+  inferred_skills <- strsplit(inferred_skills, "\\|")
+  skills <- c()
+  for(inferred_skill in inferred_skills){
+    skills <-c(skills, inferred_skill)
+  }
+  # remove duplicates
+  return(skills[!duplicated(skills)])
+}
+
+inferred_skills <- get_inferred_skills(jobspikr_data)
+```
+
+
+#### SQL Insertion Portion:
+
+##### Assumptions:
+* Windows Machine
+* MySQL Workbench 8.0
+  * there exists a user: 'root' &  server: 'localhost' with password=''. No password required.
+* RStudio installed
+
+###### Instructions:
+* 1.  git clone *.git or retrieve raw files from [GitHub] (https://github.com/quaere1verum/sps_public)
+* 2.  Start MySQL Workbench
+  * a.) If your MySQL service does not start automatically when Windows starts, press Windows key and search for "Services", press enter. Search for MySQL80 and start the service.
+  * b.) Open the file project3.sql and run it. 
+* 3. Start RStudio
+  * a.) Open and run the project3_code.r script
+  
+
+```{r}
+library(digest)
+
+tmp_frame <- jobspikr_data %>% mutate(companyid=unlist(lapply(company_name, function(x) {digest(x, algo="md5", serialize = F)})   ))
+
+companies <- tmp_frame %>% select(companyid, company_name)
+
+# Table ready for insertion
+companies_table <- distinct(companies, companyid, company_name)
+```
+
+
+```{r}
+# install required packages and load libraries
+#install.packages("DBI")
+library(DBI)
+
+#install.packages("RMySQL")
+library(RMySQL)
+
+#install.packages("tidyverse")
+library(tidyverse)
+
+
+# Create connection to DB 
+#con <- dbConnect(MySQL(), user='root', dbname='project3', host='localhost')
+
+# Set global local_infile=true;
+#dbSendQuery(con, "set global local_infile=true")
+db <- 'project3'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+# Create skill rankings func
+create_skill_rankings_table<- function()
+{
+    dbExecute(con,"drop table if exists skill_rankings")
+    dbExecute(con,"commit;")
+    skill_rankings_create_sql <- 'CREATE TABLE `skill_rankings`
+    (   `skill_frequency` int NOT NULL,
+        `companyid` varchar(100) NOT NULL,
+        `skill_id` varchar(100) NOT NULL,
+         primary key( companyid, skill_id),
+         foreign key(companyid) references companies(companyid),
+    	  foreign key (skill_id)  references skill_types(skill_id) )'
+    dbSendQuery(con, skill_rankings_create_sql)
+}
+
+
+
+# Companies data is your data frame with the same schema as companies table defined under sql
+insert_into_companies_table<- function(companies_data)
+{
+  dbExecute(con,"drop table if exists myTempTable")
+  dbWriteTable(con,"myTempTable", companies_data)
+  dbExecute(con,"insert into companies(companyid, company_name) select companyid, company_name from myTempTable")
+  dbExecute(con,"drop table if exists myTempTable")
+  dbExecute(con,"commit;")
+}
+
+# Same thing, schema needs to be the same
+insert_into_skill_types_table <- function(skill_data)
+{
+  dbExecute(con,"drop table if exists myTempTable")
+  dbWriteTable(con,"myTempTable", skill_data)
+  dbExecute(con,"insert into skill_types(skill_id, skill_name) select skill_id, skill_name from myTempTable")
+  dbExecute(con,"drop table if exists myTempTable")
+  dbExecute(con,"commit;")
+}
+
+# Same thing, schema needs to be the same
+insert_into_skill_rankings_table <- function(skill_rankings_data)
+{
+  dbExecute(con,"drop table if exists myTempTable")
+  dbWriteTable(con,"myTempTable", skill_rankings_data)
+  dbExecute(con,"insert into skill_rankings(skill_frequency, companyid, skill_id) select skill_frequency, companyid, skill_id from myTempTable")
+  dbExecute(con,"drop table if exists myTempTable")
+  dbExecute(con,"commit;")
+}
+
+
+# get Company data from frame and insert into table
+tmp_frame <- jobspikr_data %>% mutate(companyid=unlist(lapply(company_name, function(x) {digest(x, algo="md5", serialize = F)})   ))
+companies <- tmp_frame %>% select(companyid, company_name)
+# table ready for insertion
+companies_table <- distinct(companies, companyid, company_name)
+#insert_into_companies_table(companies_table)
+dbWriteTable(con,"companies_table", companies_table)
+
+#Skill data and inserting into DB
+test<-strsplit(jobspikr_data$inferred_skills, split = "\\|")
+skillset <-data.frame(skill=character())
+s <-length(test)
+
+for (i in 1:s){
+  for (j in 1:lengths(test[i])){
+    rows<-data.frame(skill=test[[i]][j])
+    skillset <-rbind(skillset,rows)
+  }  
+}
+word_freq<- skillset %>% group_by(skill)%>%   summarise(wfreq=n()) 
+
+# drop skill names that are NA doesn't make sense
+word_freq <- word_freq %>% drop_na() 
+tmp_frame <- word_freq %>% mutate(skill_id=unlist(lapply(skill, function(x) {digest(x, algo="md5", serialize = F)})), skill_name=skill)
+
+# table ready for insertion
+skill_data <- tmp_frame %>% select(skill_id, skill_name)
+dbWriteTable(con,"skill_types", skill_data)
+#insert_into_skill_types_table(skill_data)
+```
+#### What are the top requested highly paid data science skills?
+```{r}
+#Extract skills and salary column
+library(tidyr)
+library(dplyr)
+
+salary_skills <- jobspikr_data %>%  
+  select(inferred_skills, inferred_salary_currency, inferred_salary_time_unit, inferred_salary_from, inferred_salary_to)
+
+#Filter out inferred_salary_currency = 'INR' or 'blank'
+salary_skills <- filter(salary_skills, inferred_salary_currency == 'USD')
+
+#Create Inferred_Salary_Median
+salary_skills <- mutate(salary_skills, Inferred_Salary_Median = ((inferred_salary_to - inferred_salary_from) / 2) + inferred_salary_from)
+
+#Filter out Inferred_Salary_Median = '0'
+salary_skills <- filter(salary_skills, Inferred_Salary_Median > 0)
+
+#Filter out Yearly Salaries
+salary_skills_yearly <- filter(salary_skills, inferred_salary_time_unit == 'yearly')
+salary_skills_yearly <- mutate(salary_skills_yearly, Inferred_Salary_Median_Annual = Inferred_Salary_Median * 1)
+#Drop annual salary = $500 (assume bad data)
+salary_skills_yearly <- filter(salary_skills_yearly, Inferred_Salary_Median_Annual > 500)
+
+#Annualize hourly salaries
+salary_skills_hourly <- filter(salary_skills, inferred_salary_time_unit == 'hourly')
+salary_skills_hourly <- mutate(salary_skills_hourly, Inferred_Salary_Median_Annual = Inferred_Salary_Median * 2080)
+
+#Annualize monthly salaries
+salary_skills_monthly <- filter(salary_skills, inferred_salary_time_unit == 'monthly')
+salary_skills_monthly <- mutate(salary_skills_monthly, Inferred_Salary_Median_Annual = Inferred_Salary_Median * 12)
+
+#Combine yearly, hourly, & monthly tables
+salary_skills <- bind_rows(salary_skills_yearly, salary_skills_hourly, salary_skills_monthly)
+
+#Separate skills from the inferred_skills column into several rows
+salary_skills_long <- separate_rows(salary_skills, inferred_skills, sep = "\\|")
+
+#What is the frequency of inferred_skills?
+Skills_freq <- count(salary_skills_long, inferred_skills)
+Skills_freq <- arrange(Skills_freq, desc(n))
+
+#Merge Inferred_Salary_Median into Skills_freq
+distinct_salary_skills <- distinct(salary_skills_long, inferred_skills, .keep_all = TRUE)
+distinct_salary_skills <- select(distinct_salary_skills, inferred_skills, Inferred_Salary_Median_Annual)
+
+Skills_freq <- left_join(Skills_freq, distinct_salary_skills, by = 'inferred_skills')
+Skills_freq <- mutate(Skills_freq, weighted_sal = n * Inferred_Salary_Median_Annual) #Assume frequency of skill gives weight to Salary
+
+Skills_freq <- arrange(Skills_freq, desc(weighted_sal))
+head(Skills_freq, n = 10)
+```
+
+#### Retrieval of graphs based on frequency
+
+```{r}
+# Insert any corpus to data. Right now we pass Trang's word_freq
+data <- word_freq
+
+
+#put the data into a corpus for text processing
+text_corpus <- (VectorSource(data))
+text_corpus <- Corpus(text_corpus)
+
+
+##Tokenization: Split a text into single word terms called "unigrams" 
+text_corpus_clean<-Boost_tokenizer(text_corpus)
+
+#Example in R: by using tm package
+#Normalization: lowercase the words and remove punctuation and numbers
+text_corpus_clean<-tm_map(text_corpus , content_transformer(tolower))
+text_corpus_clean <- tm_map(text_corpus_clean, removePunctuation)
+text_corpus_clean <- tm_map(text_corpus_clean, removeNumbers)
+text_corpus_clean <- tm_map(text_corpus_clean, stripWhitespace)
+
+
+##Remove stopwords and custom stopwords
+stop_words <- c(stopwords('english'), "a", "b") 
+text_corpus_clean <- tm_map(text_corpus_clean, removeWords, stop_words)
+
+tdm <- TermDocumentMatrix(text_corpus_clean) #or 
+dtm <- DocumentTermMatrix(text_corpus_clean, control = list(wordLengths = c(4, Inf)))
+
+
+# looks like the text book's cover.. good for presentation, but we care more about the frames for the coding part
+freq = data.frame(sort(colSums(as.matrix(dtm)), decreasing=TRUE))
+library(wordcloud)
+wordcloud(rownames(freq), freq[,1], max.words=50, colors=brewer.pal(1, "Dark2"))
+
+
+#library(qdap)
+#library(RColorBrewer)
+#library(RWeka)
+
+# Bigram Bars
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+tdm.bigram = TermDocumentMatrix(text_corpus_clean, control = list(tokenize = BigramTokenizer))
+
+##Extract the frequency of each bigram and analyse the twenty most frequent ones.
+freq = sort(rowSums(as.matrix(tdm.bigram)),decreasing = TRUE)
+freq.df = data.frame(word=names(freq), freq=freq)
+head(freq.df, 20)
+
+
+#visualize the top 15 bigrams
+library(ggplot2)
+ggplot(head(freq.df, 15), aes(reorder(word,freq), freq)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  xlab("Bigrams") + ylab("Frequency") +
+  ggtitle("Most frequent bigrams")
+
+#Skill Rankings DB Insertion
+ skill_names  <- skill_data[['skill_name']]
+ # skill hash mapped to list of companies
+ library(hash)
+ skill_company_map <- hash()
+ 
+ for (skill in skill_names)
+ {
+   
+   tmp_frame <- jobspikr_data %>% mutate(has_pat=grepl(skill, jobspikr_data[['inferred_skills']], fixed=TRUE))
+   tmp_frame <- tmp_frame %>% select(has_pat, inferred_skills, company_name)
+   pattern_present <- tmp_frame %>% filter(has_pat==TRUE)  # has pattern 
+   companies <- pattern_present[["company_name"]]
+   
+   companies <- companies[!duplicated(companies)]
+   skill_company_map[[skill]] <- companies
+ }
+
+# create skill rankings frame
+skill_rankings_frame = tibble() 
+for (key in names(skill_company_map)) {
+  companies <- skill_company_map[[key]]
+  
+  skill_tmp <- skill_data %>% filter(skill_name==key)
+  freq_tmp <- word_freq %>%filter(skill==key)
+  
+  tmp_frame <- tibble(company_name=companies, skill=key, skill_id=skill_tmp[['skill_id']], skill_frequency=freq_tmp[['wfreq']])
+  tmp_frame <- tmp_frame %>% mutate(companyid=unlist(lapply(company_name, function(x) {digest(x, algo="md5", serialize = F)})   ))
+  skill_rankings_frame <- rbind(tmp_frame, skill_rankings_frame)
+}
+
+skill_rankings_table <- skill_rankings_frame %>% select(skill_frequency, companyid, skill_id)
+
+# insert into DB 
+#create_skill_rankings_table()
+#insert_into_skill_rankings_table(skill_rankings_table) 
+dbWriteTable(con,"skill_rankings",skill_rankings_table)
+
+```
+
+#### WordCloud for Data.World Data
+```{r}
+#Set seed to get the same wordcloud
+set.seed(45)
+
+#install.packages("wordcloud") 
+library(wordcloud)
+
+#WordCloud
+freq = data.frame(sort(colSums(as.matrix(dtm)), decreasing=TRUE))
+wordcloud(rownames(freq), freq[,1], max.words=50, colors=brewer.pal(1, "Dark2"))
+```
+
+
+#### WordCloud 2
+```{r}
+library(wordcloud)
+library(qdap)
+#install.packages("qdap")
+library(RColorBrewer)
+library(RWeka)
+
+BigramTokenizer <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+tdm.bigram = TermDocumentMatrix(text_corpus_clean, control = list(tokenize = BigramTokenizer))
+
+##Extract the frequency of each bigram and analyse the twenty most frequent ones.
+freq = sort(rowSums(as.matrix(tdm.bigram)), decreasing = TRUE)
+freq.df = data.frame(word=names(freq), freq=freq)
+head(freq.df, 20)
+
+#visualize the wordcloud   
+wordcloud(freq.df$word, freq.df$freq, max.words=100, random.order = T )
+```
+
+#### Most Frequent Bigrams
+```{r}
+#visualize the top 15 bigrams
+library(ggplot2)
+ggplot(head(freq.df, 15), aes(reorder(word,freq), freq)) +
+  geom_bar(stat = "identity") + coord_flip() +
+  xlab("Bigrams") + ylab("Frequency") +
+  ggtitle("Most Frequent Bigrams")
+```
+
+
+
+
+
+#### Plot of the top 20 Highly Paid Data Science Skills
+```{r}
+Skills_freq_top_sal <- slice(Skills_freq, 1:20)
+ggplot(Skills_freq_top_sal, aes(inferred_skills, weighted_sal))+
+  geom_col()+
+  theme(axis.text.x = element_text(angle = 60, hjust = 1))
+```
+
+
+#### Scrapping data from Indeed Website:
+```{r library}
+#Load libraries
+library(rvest)
+library(dplyr)
+library(tidyverse)
+library(xml2)
+library(stringr)
+
+jobs.data<- data.frame(source=character(),
+                job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.salary=double(),
+                job.description=character())
+```
+
+
+```{r Scrapping-Indeed}
+Indeed_data<-data.frame(job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.description=character(),
+                result.content=character(),
+                job.seen.beacon=character(),
+                job.id=character())
+pagenumber <- 0
+for (i in 0:10) {
+    temp = as.character(i*10)
+    link <- "https://www.indeed.com/jobs?q=data%20scientist&start=" 
+    link <- paste(link,temp,sep="")
+    print(link)
+    page <- read_html(link)
+ 
+    jobcards<-page %>%html_node(xpath='//*[@id="mosaic-provider-jobcards"]') %>%
+                  html_children()
+    getdetailjob <- xml_attrs(jobcards)
+      
+    jobid<-data.frame(job.id=getdetailjob[[1]][1])
+                             
+    for (j in 2:(length(getdetailjob)-1)){
+      tempv <- getdetailjob[[j]][1]
+      if (str_detect(tempv,'job_|sj_')) {
+        jobid <-rbind(jobid,getdetailjob[[j]][1])
+       }  
+    }  
+    
+    #View(jobid)  
+   tempdf<-data.frame(job.title=trimws(page %>% 
+                            html_nodes(".jobTitle-color-purple > span")  %>% 
+                            html_text()),
+                     company.name=trimws(page %>% 
+                            html_nodes(".companyName")  %>% 
+                            html_text()),
+                     location=trimws(page %>% 
+                            html_nodes(".companyLocation") %>%
+                            html_text()),
+                     job.description=trimws(page %>% html_nodes(".job-snippet") %>%
+                            html_text()),
+                     job.seen.beacon=trimws(page %>%html_nodes(".job_seen_beacon")%>%
+                            html_text())
+                    )
+  
+   pagenumber = pagenumber + nrow(tempdf)
+   print(i)
+   tempdf <- cbind(tempdf,jobid)
+   Indeed_data <- rbind(Indeed_data, tempdf)
+}
+
+Indeed_data<-Indeed_data %>%
+  mutate(location.type="")
+Indeed_data$location.type= ifelse (str_detect(Indeed_data$location,"Remote")==TRUE,"Remote", "" )
+Indeed_data$location<-str_replace(Indeed_data$location,"Remote","")
+
+write.csv(Indeed_data,"~/Desktop/Indeed_data.csv")
+```
+
+
+#### Wordcloud for Indeed data
+```{r, out.width="100%",fig.align='center'}
+library(tidyr)
+library(dplyr)
+library(textdata)
+library(knitr)
+library(tidyverse)
+library(wordcloud)
+library(RColorBrewer)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(png)
+library(stringr)
+
+csvfile <- "https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/csv/Indeed_data.csv"
+
+Indeed <- read.csv(csvfile)
+
+Indeed <-Indeed %>% slice_max(Indeed$job.description, n = 300)
+
+Indeed$job.description<-str_replace_all(Indeed$job.description, "\\n", " and ")
+Indeed$job.description<-str_replace_all(Indeed$job.description,"\\.","")
+Indeed$job.description<-str_replace_all(Indeed$job.description,":","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You will","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You'll","") 
+Indeed$job.description<-gsub("[…]","",Indeed$job.description)
+
+words<-data.frame(w=character())
+words<-strsplit(Indeed$job.description,split = "and|,")
+
+skillset <-data.frame(skill=character())
+s <-length(words)
+
+for (i in 1:s){
+  for (j in 1:lengths(words[i])){
+    rows<-data.frame(skill=str_trim(words[[i]][j]))
+    skillset <-rbind(skillset,rows)
+  }  
+}
+
+word_freq<- skillset %>% group_by(skill)%>%
+  summarise(wfreq=n()) 
+
+png("Indeed_wordcloud.png",width = 12, height = 8,units = "in", res=300)
+par(mar=rep(0,4))
+set.seed(10142021)
+word_freq <- word_freq %>% arrange(desc(wfreq))
+
+#set.seed
+set.seed(87)
+wordcloud(word_freq$skill,freq = word_freq$wfreq,scale=c(3.5, 0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+wordcloud_pic <- 'https://github.com/quaere1verum/sps_public/blob/master/data607-001/assignments/project3/Indeed-WordCloud.png'
+
+knitr::include_graphics(wordcloud_pic)
+```
+
+
+#### lm function
+```{r}
+library(tidyr)
+library(dplyr)
+library(textdata)
+library(knitr)
+library(tidyverse)
+library(wordcloud)
+library(RColorBrewer)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(png)
+job_df<- read.csv('https://raw.githubusercontent.com/quaere1verum/sps_public/master/data_scientist_42928_20211010_1633890523765196_1.csv')
+
+test<-strsplit(job_df$inferred_skills, split = "\\|")
+
+skillset <-data.frame(skill=character())
+s <-length(test)
+
+for (i in 1:s){
+  for (j in 1:lengths(test[i])){
+    rows<-data.frame(skill=test[[i]][j])
+    skillset <-rbind(skillset,rows)
+  }  
+}
+
+skill_company <-data.frame(skillid=character(),companyid=character(),state=character())
+
+test <-job_df %>% select (company_name,inferred_skills,state)%>%
+    filter(inferred_skills!="")
+
+datarow<-nrow(test)
+
+for (i in 1:datarow){
+  infer_byrow <-c(skillid=strsplit(test[[i,2]], split = "\\|")) 
+  rows<-data.frame(skillid=infer_byrow,companyid=test[[i,1]],state=test[[i,3]])
+  skill_company <-rbind(skill_company,rows)
+}
+
+# lm function by state
+company_state <- skill_company %>% select(companyid,state)%>%
+  group_by(companyid,state) %>%
+  summarise(skill_count=n())  
+
+company_state <- company_state %>% mutate(ratio= skill_count/sum(skill_count))
+
+ggplot(company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA")) , aes(sample=skill_count))+
+  stat_qq(aes(color =state))+
+  stat_qq_line(aes(color = state))+
+  facet_grid(~state)
+
+lm_company_state <- lm(ratio~state,data=company_state)
+summary(lm_company_state)
+
+lmplot<- company_state %>% filter (state %in% c("CA","NY","TX","NE","FL","NJ","MA"))
+        
+ggplot(data = lmplot, aes(x = skill_count, y = ratio)) +
+  geom_jitter() +
+  geom_smooth(method = "lm")+
+  facet_grid(~state)+
+  xlab("Skills")+
+  ylab("Ration")+
+  theme(axis.text.x = element_text(size=5),
+        axis.text.y = element_text(size=5),
+        axis.title.x = element_text(size = 8),
+        axis.title.y = element_text(size = 8))
+```
+
+
+#### Just one more plot from Data.World Data
+```{r}
+word_freq<- skillset %>% group_by(skill)%>%
+  summarise(wfreq=n())
+
+#Word Frequency  "Values Skills in Data Science
+ggplot(top_n(word_freq,35), aes(x=reorder(skill,wfreq),y = wfreq)) + 
+  geom_bar(stat='identity',fill="olivedrab")+
+  coord_flip()+
+  ylab("Count")+
+  xlab("Skills")+
+  theme_tufte()+
+  ggtitle("Valued Skills in Data Science")  
+```
+
+
+#### To answer our initial question "Which are the most valued data science skills?" from our datasets [Data.World](https://data.world/jobspikr/10000-data-scientist-job-postings-from-the-usa/workspace/file?filename=data_scientist_united_states_job_postings_jobspikr.csv] and a downloaded HTML files from Indeed [https://www.indeed.com/jobs?l=New%20York%20State&vjk=ae3c34627b58db77) and from [Indeed.com](https://www.indeed.com/jobs?q=data%20scientist&start=) we were able to conclude that software skills: Python, Machine Learning and SQL rank amongst the highest as well as general skills: analysis, statistics, design, research and management.
+
+
+

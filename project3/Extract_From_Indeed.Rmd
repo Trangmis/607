@@ -1,0 +1,153 @@
+---
+title: "Scrapping Data From Job Websites"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+
+```{r library}
+library(rvest)
+library(dplyr)
+library(tidyverse)
+library(xml2)
+library(stringr)
+jobs.data<- data.frame(source=character(),
+                job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.salary=double(),
+                job.description=character())
+```
+
+```{r Scrapping-Indeed}
+Indeed_data<-data.frame(job.title=character(),
+                company.name=character(),
+                location=character(),
+                job.description=character(),
+                result.content=character(),
+                job.seen.beacon=character(),
+                job.id=character())
+pagenumber <- 0
+
+for (i in 0:100) {
+    temp = as.character(i*10)
+    link <- "https://www.indeed.com/jobs?q=data%20scientist&start=" 
+    link <- paste(link,temp,sep="")
+    print(link)
+    page <- read_html(link)
+ 
+    jobcards<-page %>%html_node(xpath='//*[@id="mosaic-provider-jobcards"]') %>%
+                  html_children()
+
+    getdetailjob <- xml_attrs(jobcards)
+      
+    jobid<-data.frame(job.id=getdetailjob[[1]][1])
+                             
+    for (j in 2:(length(getdetailjob)-1)){
+      tempv <- getdetailjob[[j]][1]
+      if (str_detect(tempv,'job_|sj_')) {
+        jobid <-rbind(jobid,getdetailjob[[j]][1])
+       }  
+    }  
+    
+    #View(jobid)  
+   tempdf<-data.frame(job.title=trimws(page %>% 
+                            html_nodes(".jobTitle-color-purple > span")  %>% 
+                            html_text()),
+                     company.name=trimws(page %>% 
+                            html_nodes(".companyName")  %>% 
+                            html_text()),
+                     location=trimws(page %>% 
+                            html_nodes(".companyLocation") %>%
+                            html_text()),
+                     job.description=trimws(page %>% html_nodes(".job-snippet") %>%
+                            html_text()),
+                     job.seen.beacon=trimws(page %>%html_nodes(".job_seen_beacon")%>%
+                            html_text())
+                    )
+  
+   pagenumber = pagenumber + nrow(tempdf)
+   print(i)
+   tempdf <- cbind(tempdf,jobid)
+   Indeed_data <- rbind(Indeed_data, tempdf)
+}
+
+Indeed_data<-Indeed_data %>%
+  mutate(location.type="")
+
+Indeed_data$location.type= ifelse (str_detect(Indeed_data$location,"Remote")==TRUE,"Remote", "" )
+
+Indeed_data$location<-str_replace(Indeed_data$location,"Remote","")
+
+View(Indeed_data)    
+write.csv(Indeed_data,"~/Desktop/Indeed_data.csv")
+
+```
+
+```{r, out.width="100%",fig.align='center'}
+library(tidyr)
+library(dplyr)
+library(textdata)
+library(knitr)
+library(tidyverse)
+library(wordcloud)
+library(RColorBrewer)
+library(ggplot2)
+library(reshape2)
+library(ggthemes)
+library(png)
+library(stringr)
+
+csvfile <- "https://raw.githubusercontent.com/quaere1verum/sps_public/master/data607-001/assignments/project3/csv/Indeed_data.csv"
+Indeed <- read.csv(csvfile)
+
+Indeed <-Indeed %>% slice_max(Indeed$job.description, n = 300)
+
+Indeed$job.description<-str_replace_all(Indeed$job.description, "\\n", " and ")
+Indeed$job.description<-str_replace_all(Indeed$job.description,"\\.","")
+Indeed$job.description<-str_replace_all(Indeed$job.description,":","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You will","") 
+Indeed$job.description<-str_replace_all(Indeed$job.description,"You'll","") 
+Indeed$job.description<-gsub("[…]","",Indeed$job.description)
+
+words<-data.frame(w=character())
+words<-strsplit(Indeed$job.description,split = "and|,")
+
+skillset <-data.frame(skill=character())
+s <-length(words)
+
+for (i in 1:s){
+  for (j in 1:lengths(words[i])){
+    rows<-data.frame(skill=str_trim(words[[i]][j]))
+    skillset <-rbind(skillset,rows)
+  }  
+}
+
+word_freq<- skillset %>% group_by(skill)%>%
+  summarise(wfreq=n()) 
+
+png("Indeed_wordcloud.png",width = 12, height = 8,units = "in", res=300)
+par(mar=rep(0,4))
+set.seed(10142021)
+word_freq <- word_freq %>% arrange(desc(wfreq))
+
+wordcloud(word_freq$skill,freq = word_freq$wfreq,scale=c(3.5,0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+wordcloud_pic <- '/Users/admin/Desktop/DATA607/Project3/Indeed_wordcloud.png'
+
+knitr::include_graphics(wordcloud_pic)
+
+```
+
