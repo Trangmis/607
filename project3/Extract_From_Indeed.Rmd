@@ -1,5 +1,5 @@
 ---
-title: "Scrapping Data From Job Websites"
+title: "Scraping Data From Job Websites"
 output:
   html_document: default
   pdf_document: default
