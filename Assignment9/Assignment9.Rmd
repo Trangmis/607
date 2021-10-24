@@ -1,0 +1,105 @@
+---
+title: "DATA 607 - ASSIGNMENT 9"
+author: "TRANG DO"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>"
+)
+```
+
+The New York Times Developer Network website has different APIs. This assignment is about best sellers & books APIs.
+
+## Getting Data from NYTimes API
+Data are extracted from APIs and stored to PosrgreSQL
+
+```{r libraries}
+library(tidyverse)
+library(httr)
+library(DBI)
+library(jsonlite)
+library(kableExtra)
+
+db <- 'nytimes_books'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+```
+
+```{r reading-data-from-APIs}
+# Get book category
+response<-fromJSON('https://api.nytimes.com/svc/books/v3/lists/names.json?api-key=kPk1W0YcGbUAkSwv94OePtscbJAhOMKu')
+book_category <- data.frame(response$results)
+dbWriteTable(con,'book_category',book_category ,overwrite=TRUE)
+
+# Get best sellers history
+response<-fromJSON('https://api.nytimes.com/svc/books/v3/lists/best-sellers/history.json?api-key=kPk1W0YcGbUAkSwv94OePtscbJAhOMKu')
+best_sellers <- data.frame(response$results)
+best_sellers <- best_sellers %>% unnest_wider(reviews)
+best_sellers <- best_sellers %>% unnest_wider(isbns)
+best_sellers <- best_sellers %>% unnest(ranks_history)
+isbn <- best_sellers %>% select(primary_isbn10,primary_isbn13,isbn10,isbn13)
+df<-flatten(isbn)
+library(tidyr)
+isbn <-unnest(df, isbn10,isbn13)
+dbWriteTable(con,"isbn_best_sellers",isbn,overwrite=TRUE)
+
+best_sellers <- best_sellers %>% select(-c(isbn10,isbn13))
+dbWriteTable(con,'best_sellers',best_sellers,overwrite=TRUE)
+
+books <-data_frame()
+n<-length(book_category$list_name_encoded)
+for (i in 1:n){
+  tmp<-paste("https://api.nytimes.com/svc/books/v3/lists.json?list=",
+             book_category$list_name_encoded[i],sep="")
+  url <- paste(tmp,"&api-key=kPk1W0YcGbUAkSwv94OePtscbJAhOMKu",sep="")
+
+  tmp<-fromJSON(toString(url))
+  books <- rbind(books,data_frame(tmp$results))
+  Sys.sleep(20)
+  #print(i)
+}
+
+books <-books %>% unnest(reviews,book_details,isbns)
+
+dbWriteTable(con,'books',books ,overwrite=TRUE)
+```
+
+## Books & Best Sellers Data
+
+```{r best-sellers-books, echo=FALSE, results='asis'}
+knitr::kable(head(books, 10),caption="DATA SAMPLE OF BOOKS")%>%
+    kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+
+knitr::kable(head(best_sellers, 10),caption="DATA SAMPLE OF BEST SELLERS")%>%
+    kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+
+## Plots
+
+```{r best-seller-books-plot}
+ggplot(best_sellers %>% select(display_name) %>%group_by(display_name) %>% summarise(n=n()), 
+       aes(x = fct_reorder(display_name, n), y = n)) + 
+  geom_col(fill = "lightblue") + 
+  labs(x = "Book Category", y = "Count", 
+      caption = "Best Sellers by Category") +
+  coord_flip()
+
+ggplot(head(books %>% select(display_name) %>%group_by(display_name) 
+       %>% summarise(n=n()) %>% arrange(desc(n)),10), 
+       aes(x = fct_reorder(display_name, n), y = n)) + 
+  geom_col(fill = "lightblue") + 
+  labs(x = "Book Category", y = "Count", 
+      caption = "Book by Category") +
+  coord_flip()
+```
