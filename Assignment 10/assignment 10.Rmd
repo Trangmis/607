@@ -1,0 +1,190 @@
+---
+title: "Assignment 10"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output: openintro::lab_report
+---
+# TEXT MINING IN R
+
+This assignment is a continuation of the exploration and observation of the NYTimes Book APIs from assignment 9, posted at https://rpubs.com/Trangmis/826396. The book APIs provide reviews of a book in NY Times newspapers if there are any. This exercise uses Text mining in R and sentiments of NRC, AFINN & Bing to analyze reviews written in English.
+
+Reviews need to break into individual tokens. It's called tokenization, and the function unnest_tokens(word, text) is applied in this process.
+
+## Question 1: Are NRC, AFINN & BING lexicon similar?
+
+Two books '21 LESSONS FOR THE 21ST CENTURY', 'ALEXANDER HAMILTON' are linked to NRC, AFINN & BING lexicon. Plots show that there is similarity across lexicons.
+
+### Load packages & prepare data
+```{r load-packages, message=FALSE}
+library(tidyverse)
+library(openintro)
+library(dplyr)
+library(tidytext)
+library(ngram)
+library(DBI)
+library(htmltools)
+library(forcats)
+library(reshape2)
+library(gridExtra)
+
+bing_dictionary <- get_sentiments("bing")
+afinn_dictionary <- get_sentiments("afinn")
+nrc_dictionary <- get_sentiments("nrc")
+
+# ---- Codes to download reviews -------
+db <- 'nytimes_books'
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+#sqlstatement <-"SELECT
+#                    DISTINCT ON (book_review_link) book_review_link, isbn10, title
+#                FROM
+#                   books
+#              WHERE book_review_link !='
+#              ORDER BY
+#                  book_review_link"
+
+#query <- dbGetQuery(con, sqlstatement)
+#mycorpus <- data.frame()
+#n<-lengths(query)[[1]]
+#for (i in 1:n){
+#  response<-read_html(query$book_review_link[[i]])
+#  text_df <- tibble(isbn=query$isbn10[i],booktitle = query$title[i],
+#                    line = 1:length(response), text = response)  
+# test <- text_df%>% unnest_tokens(word,text)
+#  mycorpus <- rbind(mycorpus,test)
+#  Sys.sleep(15)
+#}
+
+#dbWriteTable(con,'mycorpus',mycorpus,overwrite=TRUE)
+# --------------------------------------
+
+mycorpus <- dbGetQuery(con, "select mycorpus.* from mycorpus")
+
+mycorpus <- mycorpus %>% select(booktitle,word) %>%
+            group_by(booktitle)%>%
+            count(word, sort = TRUE) 
+
+nrc.bookreview <- mycorpus %>% inner_join(nrc_dictionary,by="word")
+afinn.bookreview <- mycorpus %>% inner_join(nrc_dictionary,by="word")
+bing.bookreview <- mycorpus %>% inner_join(nrc_dictionary,by="word")
+```
+
+### Link text of reviews to NRC sentiments
+
+The results of tokenization link to NRC Lexicon and plot for any analyses might have
+
+```{r nrc-sentiments}
+test <- nrc.bookreview %>%
+  filter(booktitle %in% c("21 LESSONS FOR THE 21ST CENTURY","ALEXANDER HAMILTON")) %>%
+  group_by(booktitle, sentiment)%>%
+  summarise(freq=sum(n))
+  
+test %>%
+  mutate(sentiment = fct_reorder(sentiment,freq)) %>%
+  ggplot(aes(x=sentiment, y=freq,fill=sentiment)) +
+    geom_bar(stat="identity", width=.4) +
+    facet_wrap(~booktitle,ncol=2)+
+    coord_flip() +
+    xlab("Sentiment")+
+    ylab("Count")+
+    theme(legend.position="none")
+```
+
+### Link text of reviews to AFINN sentiments
+
+```{r afinn-sentiments}
+test <- afinn.bookreview %>%
+  filter(booktitle %in% c("21 LESSONS FOR THE 21ST CENTURY","ALEXANDER HAMILTON")) %>%
+  group_by(booktitle, sentiment)%>%
+  summarise(freq=sum(n))
+
+test %>%
+  mutate(sentiment = fct_reorder(sentiment,freq)) %>%
+  ggplot(aes(x=sentiment, y=freq,fill=sentiment)) +
+    geom_bar(stat="identity", width=.4) +
+    facet_wrap(~booktitle,ncol=2)+
+    coord_flip() +
+    xlab("Sentiment")+
+    ylab("Count")+
+    theme(legend.position="none")
+```
+
+### Link text of reviews to BING sentiments
+
+```{r bing-sentiments}
+test <- bing.bookreview %>%
+  filter(booktitle %in% c("21 LESSONS FOR THE 21ST CENTURY","ALEXANDER HAMILTON")) %>%
+  group_by(booktitle, sentiment)%>%
+  summarise(freq=sum(n))
+
+test %>%
+  mutate(sentiment = fct_reorder(sentiment,freq)) %>%
+  ggplot(aes(x=sentiment, y=freq,fill=sentiment)) +
+    geom_bar(stat="identity", width=.4) +
+    facet_wrap(~booktitle,ncol=2)+
+    coord_flip() +
+    xlab("Sentiment")+
+    ylab("Count")+
+    theme(legend.position="none")
+```
+
+## Question 2: Is review differ from others based on Books, Book Category?
+
+Children books' reviews are more positive words than others.
+
+```{r echo=FALSE}
+mycorpus <- dbGetQuery(con, "select mycorpus.*,list_name 
+                                from mycorpus,books
+                                where mycorpus.isbn=books.isbn10")
+
+test <- mycorpus %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  filter(booktitle %in% c("RED NOTICE","THE PRINCESS DIARIST","21 LESSONS FOR THE 21ST CENTURY","ALEXANDER HAMILTON","BROWN GIRL DREAMING","CAPTAIN UNDERPANTS"))%>%
+  count(list_name,booktitle, index = line, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate('Book_Category'=list_name,sentiment = positive - negative)
+
+ggplot(test, 
+       aes(index, sentiment, fill = Book_Category)) +
+  geom_col() +
+  facet_wrap(~booktitle, ncol = 2) + 
+  theme(
+    legend.position = "bottom"
+    )
+```
+
+## For More Expansion
+1. Does a book review match with a book?
+2. Does context go wrong if text mining is only based on the individual token?
+3. Can Lexicon learn a word from context, sentence(s) as humans learn a language?
+
+## Work Cited
+This dataset was published in Saif M. Mohammad and Peter Turney. (2013), ``Crowdsourcing a Word-Emotion Association Lexicon.'' Computational Intelligence, 29(3): 436-465.
+
+article{mohammad13,
+author = {Mohammad, Saif M. and Turney, Peter D.},
+title = {Crowdsourcing a Word-Emotion Association Lexicon},
+journal = {Computational Intelligence},
+volume = {29},
+number = {3},
+pages = {436-465},
+doi = {10.1111/j.1467-8640.2012.00460.x},
+url = {https://onlinelibrary.wiley.com/doi/abs/10.1111/j.1467-8640.2012.00460.x},
+eprint = {https://onlinelibrary.wiley.com/doi/pdf/10.1111/j.1467-8640.2012.00460.x},
+year = {2013}
+}
+
+Name: AFINN-111 
+ URL: http://www2.imm.dtu.dk/pubdb/views/publication_details.php?id=6010 
+ License: Open Database License (ODbL) v1.0 
+ Size: 78 KB (cleaned 59 KB) 
+ Download mechanism: https 
+
+
+...
+
