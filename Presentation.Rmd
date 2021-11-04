@@ -1,0 +1,129 @@
+---
+title: 'Text Mining Models versus ESL lessons'
+output:
+  rmdformats::downcute: default
+  rmdformats::robobook: default
+  rmdformats::material: default
+  
+---
+
+## INTRODUCTION
+
+When people learn a new language, they first learn simple words. They learn more such as the structure of the language, grammar, more vocabulary. They can form simple sentences to complex sentences to express thought, ideas over time and through practice. If comparing the text mining algorithms to human beings' language learning skills, How does it go?
+
+```{r}
+library(flexdashboard)
+library(tidyverse)
+library(httr)
+library(textreadr)
+library(dplyr)
+library(tidytext)
+library(ngram)
+library(htmltools)
+library(forcats)
+library(kableExtra)
+library(scales)
+
+lexicons<- stop_words %>% select (lexicon) %>% group_by(lexicon) %>% summarise(n = n())
+```
+
+---
+
+## Tokenization with Stopwords from (SMART,onix, snowball)
+
+```{r}
+Situation <-c("When something bad happens",
+              'When a husband comes home after a long day at work',
+              'When you expected something to happen, especially after warning someone about it',
+              'When a roommate is acting bizarre',
+              'When someone says something that is very obvious',
+              'When someone puts on too much perfume',
+              'When someone does something wrong')
+Sarcastic_sentence = c("That's just what I needed today!",
+                       "I work 40 hours a week for me to be this poor.",
+                       "Well, what a surprise.",
+                       "Is it time for your medication or mine?",
+                       "Really, Sherlock? No! You are clever.",
+                       "Nice perfume. How long did you marinate in it?",
+                       "Very good; well done!")
+Type=c('brooding',
+       'self-deprecating',
+       'juvenile',
+       'juvenile',
+       'juvenile/brooding',
+       'deadpan/brooding',
+       'brooding')
+
+text_df <- data.frame('orderNo'= c(1:7),Situation,Sarcastic_sentence,Type)
+
+untokened_text_df<- text_df %>% unnest_tokens(word,Sarcastic_sentence)
+
+#data(stop_words)
+
+anti_join_result <- untokened_text_df %>%
+  anti_join(stop_words, by="word")
+
+inner_join_result <- untokened_text_df %>%
+  inner_join(stop_words, by="word")
+
+knitr::kable(text_df,caption="AN EXAMPLE OF SARCASTIC SENTENCES")%>%
+    kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+
+knitr::kable(anti_join_result,caption="THE RESULT OF TOKENIZATION & STOP WORD FILTER WITH
+             ONIX, SMART,SNOWBALL LEXICON")%>%
+    kable_styling(bootstrap_options = c("bordered","striped","condensed"))%>%
+    kable_paper(html_font="arial",font_size=10,full_width = F)
+```
+
+## BING SENTIMENT
+```{r}
+test <- untokened_text_df %>%
+  inner_join(get_sentiments("bing"), by="word") %>%
+  count(Situation, index = orderNo, sentiment) %>%
+  pivot_wider(names_from = sentiment, values_from = n, values_fill = 0) %>% 
+  mutate(sentiment = positive - negative)
+
+ggplot(test, 
+  aes(index, sentiment,fill=Situation)) +
+  geom_col() +
+  theme(legend.box="vertical",
+        legend.position = "bottom")+
+  guides(fill = guide_legend(nrow = 5),
+         legend.title = element_blank())
+```
+
+## NRC SENTIMENT
+```{r}
+test <- untokened_text_df %>%
+  inner_join(get_sentiments("nrc"), by="word")
+
+ggplot(test, 
+  aes(orderNo, sentiment,fill=Situation)) +
+  geom_col()+
+  theme(legend.box="vertical",
+        legend.position = "bottom")+
+  guides(fill = guide_legend(nrow = 5),
+         legend.title = element_blank())
+```
+
+## AFINN SENTIMENT
+
+```{r}
+test <- untokened_text_df %>%
+  inner_join(get_sentiments("afinn"), by="word")
+
+ggplot(test,
+  aes(orderNo, value,fill=Situation)) +
+  geom_col() +
+  theme(legend.box="vertical",
+        legend.position = "bottom")+
+  guides(fill = guide_legend(nrow = 5),
+         legend.title = element_blank())
+```
+
+## WHAT CAN GO WRONG?
+
+1. Incorrect interpretation sentence, paragraphs ....
+2. Culture involves to text.
+3. Text Mining does backward tasks compare to human beings' language learning process
