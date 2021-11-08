@@ -1,0 +1,42 @@
+---
+title: "Week 11 - Amazon Recommendation System"
+author: "Trang Do"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::robobook:
+    highlight: kate
+---
+
+```{r setup, include=FALSE}
+## Global options
+knitr::opts_chunk$set(cache = TRUE)
+```
+
+According to Amazon, items that were purchased, saved, rated are used for their algorithm to recommend to Amazon users.
+
+Does the recommendation system make an outlier become a spotlight to harm than help? Or does recommendation filter out a spotlight that needs addressing?
+
+###  Amazon's Users View
+
+What are Amazon's users target?
+The users' goals are typically to find a product that they need.
+
+How can Amazon's users achieve their goals?
+Recommendation system at Amazon provides a list of products to Amazon's users.
+
+### Amazon's Recommendation Algorithm.
+
+Who are the target users? 
+Amazon's goals help provide recommendations to their users for products across their platform, such as products to buy, movies to watch, or books to read.
+
+What are the goals of Amazon? And How does Amazon accomplish those goals?
+Amazon wants to provide Site Features. So they attract and keep their users with their e-commerce. Amazon uses recommendations as a tool to accomplish those goals.
+
+### What needs to be addressed about the existing algorithm?
+
+Amazon's recommendation algorithm recently faced criticism for promoting health misinformation books, anti-vaccine, or health misinformation. Amazon's algorithm uses keywords or sentiments, web browser history, and other users to recommend could wrongly interpret or mislead. Boost reviews or ratings can be created to get to the top of a list. At the same time, Amazon's users don't know what Amazon provides with few words. So Amazon's search engine/recommendation system does have an impact on its users. Amazon should have categories or suggestions that let users know which products are factually supported by scientific evidence or opinions. By providing more information to users, they can choose, and freedom of speech is still reserved.
+
+### Works cited
+https://www.researchgate.net/profile/Jieun-Shin-4/publication/342172126_Algorithms_and_Health_Misinformation_A_Case_Study_of_Vaccine_Books_on_Amazon/links/5f8f4b2792851c14bcd85402/Algorithms-and-Health-Misinformation-A-Case-Study-of-Vaccine-Books-on-Amazon.pdf
+
+https://www.brookings.edu/techstream/the-conspiracy-and-disinformation-challenge-on-e-commerce-platforms/
