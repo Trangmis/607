@@ -1,0 +1,272 @@
+```{r}
+library(gutenbergr)
+library(tm)
+library(tidyverse)
+library(tidytext)
+library(tm.plugin.mail)
+
+# get the stop words data
+data("stop_words")
+
+
+# now try to do the same with the document
+setwd("/Users/admin/Desktop/DATA607/project4/")
+
+# try to read the directory of files
+filenames <- list.files("spam", pattern="*.*", full.names=TRUE)
+
+# now read all of these files into a tibble with column names(filename and text?)
+all_spam <- tibble()
+
+spam_words <- tibble(
+  word = "a",
+  spam_word_count  = 1
+)
+
+stopper_limit <- 5000
+stopper <- 0
+start_time <- Sys.time()
+#fn <- "spam/00001.317e78fa8ee2f54cd4890fdc09ba8176"
+for (fn in filenames) {
+  # injest the file
+  spam <- read_file(fn)
+  
+  print(fn)
+  
+  email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+  
+    # skip if there are attachments or weird base64 assets because they mess up
+    # unnest tokens
+    if(str_detect(spam,"Content-Transfer-Encoding: base64")) {
+      next
+    }
+  
+    # skip if the length is zero
+    if (length(email_message) == 0) {
+      next
+    }
+
+    # skip if we can't get the content type?
+    if (is.na(email_message[[1]]$meta$header)) {
+      next
+    }
+  
+    header <- email_message[[1]]$meta$header
+    hits <- str_match(names(header), regex('content-type', ignore_case = T))
+    content_type_index <- which(!is.na(hits))
+    length(content_type_index)
+  
+    # skip if this email is unparseable
+    if (length(content_type_index) == 0) {
+      next
+    } else {
+      content_type <- header[content_type_index]
+    }
+    
+    content <- email_message[[1]]$content
+    # determine if it's a plain-text or html spam
+  if (str_detect(content_type, regex('plain', ignore_case = T))) {
+
+    print("plain")
+    
+    spam_lines <- unlist(str_split(spam, "(\n| )"))
+    spam_tibble <- tibble(
+      #word = spam_lines,
+      #text = spam_lines,
+      text = content,
+      )
+    
+    spam_words_tmp <- spam_tibble %>% 
+      unnest_tokens(word, text)
+      
+    spam_words_tmp <- spam_words_tmp %>% 
+      anti_join(stop_words, by="word") %>%
+      count(word, name="spam_word_count") %>%
+      arrange(desc(spam_word_count))
+    
+    #spam_words_tmp <- spam_words_tmp %>% mutate (filename = fn)
+    #spam_words <- bind_rows(spam_words,spam_words_tmp)
+    
+  } else {
+    print ("html")
+    
+    spam_tibble <- tibble(
+      #text = spam,
+      text = content,
+    )
+    
+    spam_words_tmp <- spam_tibble %>% 
+      unnest_tokens(word, text,format = "html")
+
+    spam_words_tmp <- spam_words_tmp %>% 
+      anti_join(stop_words, by="word")  %>%
+      count(word, name="spam_word_count") %>%
+      arrange(desc(spam_word_count))
+    #spam_words_tmp <- spam_words_tmp %>% mutate (filename = fn)
+    
+  }
+    #spam_words <- bind_rows(spam_words,spam_words_tmp)
+    # if (stopper == 2) {
+    #   break
+    # }
+    
+  spam_words <- merge(x = spam_words, y = spam_words_tmp, by.x = "word", by.y = "word", all.x=TRUE, all.y = TRUE)
+  
+  #spam_words
+  spam_words[is.na(spam_words)] <- 0
+  spam_words <- mutate(spam_words, spam_word_count = spam_word_count.x + spam_word_count.y)
+  spam_words <- spam_words[-c(2,3)]
+  #spam_words   
+
+  
+  stopper <- stopper + 1
+  print (paste("Iteration", stopper))
+  if (stopper >= stopper_limit) {
+    break
+  }
+  # 
+  # spam_lines <- unlist(str_split(spam, "(\n| )"))
+  # spam_tibble <- tibble(
+  #   text = spam_lines,
+  # )
+  # 
+  # 
+  # spam_words_tmp <- spam_tibble %>% 
+  #   anti_join(stop_words, by=c("text" = "word")) %>%
+  #   unnest_tokens(word, text) %>%
+  #   count(word, name="spam_word_count") %>%
+  #   arrange(desc(spam_word_count))
+  # 
+  # spam_words_tmp <- spam_words_tmp %>% mutate (filename = fn)
+  # 
+  # spam_words <- bind_rows(spam_words,spam_words_tmp)
+  # 
+}
+
+# only keep words that are at least three letters long
+spam_words <- spam_words %>% filter (str_length(word) >= 3)
+
+end_time <- Sys.time()
+
+end_time - start_time
+
+# # try to use tm.plugin.mail
+# mbox <- MBoxSource("./spam")
+# convert_mbox_eml(mbox = "/Users/clee/Documents/home/cuny_professional_studies/data_607/git/607_document_classification/spam", dir = "./tmp2")
+# 
+# mail_messages <- VCorpus(MBoxSource("spam/00024.6b5437b14d403176c3f046c871b5b52f"), readerControl = list(reader = readMail))
+# removeMultipart(mail_messages[[1]])
+# mail_messages[[1]]$meta$header$`Content-Type`
+# mail_messages[[1]]$content
+# 
+# 
+# 
+# ## start parsing
+# all_spam <- tibble()
+# spam_words <- tibble()
+# filenames <- list.files("spam", pattern="*.*", full.names=TRUE)
+# for (fn in filenames) {
+#   email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+#   print (fn)
+#   
+#   # skip if the length is zero
+#   if (length(email_message) == 0) {
+#     next 
+#   }
+#   
+#   # skip if we can't get the content type?
+#   if (is.na(email_message[[1]]$meta$header)) {
+#     next
+#   }
+# 
+#   # let's handle the text/plain header
+#   header <- email_message[[1]]$meta$header
+#   hits <- str_match(names(header), regex('content-type', ignore_case = T))
+#   content_type_index <- which(!is.na(hits))
+#   length(content_type_index)
+#   
+#   if (length(content_type_index) >0) {
+#     content_type <- header[content_type_index]
+#     #print (content_type)
+#     if (str_detect(content_type, regex('plain', ignore_case = T))) {
+#       print ("plain")
+#       
+#       spam_lines <- unlist(str_split(spam, "(\n| )"))
+#       spam_tibble <- tibble(
+#         text = spam_lines,
+#       )
+#       
+#       
+#       spam_words_tmp <- spam_tibble %>% 
+#         anti_join(stop_words, by=c("text" = "word")) %>%
+#         unnest_tokens(word, text) %>%
+#         count(word, name="spam_word_count") %>%
+#         arrange(desc(spam_word_count))
+#       
+#       spam_words_tmp <- spam_words_tmp %>% mutate (filename = fn)
+#       
+#       spam_words <- bind_rows(spam_words,spam_words_tmp)
+#       
+#       
+#     } else if (str_detect(content_type, regex('html', ignore_case = T))) {
+#       print ("html")
+# 
+#       
+#       df <- email_message[[1]]$content %>% unnest_tokens(ngram, y, token = "ngrams", n = 1)
+#       break
+#       
+#       
+#     } else if (str_detect(content_type, regex('multipart', ignore_case = T))) {
+#       print ("multipart")
+#       
+#       # now find the boundary token from the content type
+#       matches <- str_match(content_type, regex("boundary=\"(.*)", ignore_case = T))
+#       boundary <- print(matches[2])
+#       print (boundary)
+#       content_type
+#       
+#       content <- email_message[[1]]$content
+#       boundary_count <- 0
+#       
+#       message_body <- ""
+#       for (c in content) {
+#         if (str_detect(c, boundary)) {
+#           boundary_count <- boundary_count + 1
+#         }
+#         
+#         # if we have an odd number of boundaries then we have a new message body section
+#         if (boundary_count %% 1 == 1) {
+#           message_body <- paste(message_body, c)
+#         }
+#         
+#         
+#       }
+#       
+#       
+#       break
+#     } else {
+#       print ("could not find content type")
+#       break
+#     }
+#     
+#   }
+#   
+# 
+#   print("")
+#   
+# }
+
+
+# content_type <- 'Content-Type: multipart/mixed; boundary="----=_NextPart_000_00C2_37C70C2D.A8844B81"'
+# matches <-str_match(content_type, regex("boundary=\"-+=(.*)", ignore_case = T))
+# matches[2]
+# ?str_match
+
+View(spam_words)
+View(email_message)
+test <- as.data.frame(email_message[["1"]][["content"]])
+test <- test %>% rename(sentence='email_message[["1"]][["content"]]')
+df <- as.data.frame(test %>% unnest_tokens(ngram,sentence, token = "ngrams", n = 1))
+df %>% filter(!is.na(ngram)) %>%
+  anti_join(stop_words, by=c("ngram"="word"))
+```
