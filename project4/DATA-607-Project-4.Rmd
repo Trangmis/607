@@ -1,0 +1,272 @@
+---
+title: "DATA 607 Project 4"
+output: html_document
+---
+
+# Introduction 
+
+This assignment initializes to apply NLP in building & classifying SPAM & HAM emails through training and testing datasets.
+
+# Fisrt Attempt
+
+All HAM & SPAM files are loaded and random choose to run
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+library(tm)
+library(tidytext)
+library(tidyverse)
+library(gridExtra)
+library(wordcloud)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(DBI)
+
+spam_path <- "/Users/admin/Desktop/DATA607/project4/spam/"
+ham_path <- "/Users/admin/Desktop/DATA607/project4/easy_ham/"
+
+spam_filelist <-list.files(spam_path)
+spam_filelist <- as.data.frame(spam_filelist)
+spam_filelist<-rename(spam_filelist,file=spam_filelist)
+spam_filelist["type"]<-"spam"
+ham_filelist <-list.files(ham_path)
+ham_filelist <- as.data.frame(ham_filelist)
+ham_filelist<-rename(ham_filelist,file=ham_filelist)
+ham_filelist["type"]<-"ham"
+
+filelist <- rbind(ham_filelist,spam_filelist)
+
+set.seed(80)
+sample<-sample_n(filelist,100)
+train <- sample[1:80,]
+test <- sample[81:100,]
+data.raw <- data.frame(x='',y='',type='')
+
+for (i in 1:80){
+  if (train$type[i]=='spam'){
+    path <- "/Users/admin/Desktop/DATA607/project4/spam/"
+  }else{
+    path <- "/Users/admin/Desktop/DATA607/project4/easy_ham/"
+  }
+  path<- paste(path,train$file[i],sep="")
+  ham_spam<- read_lines(path,skip=0,n_max = -1L)
+  temp<-as.data.frame(merge(train$file[i],ham_spam))
+  temp["type"] <- train$type[i]
+  data.raw <- rbind.data.frame(data.raw,temp)
+}
+
+```
+
+# Naive Bayes Method
+
+P(N) : Probability of HAM over total emails
+
+P(S) : Probability of SPAM over total emails
+
+P(W|S): Probability of words on SPAM
+
+P(W|N): Probability of words on HAM
+
+The dataset hasn't been validate whether it's the best fit yet. When a new email comes, it will be tokernized based on ngram. Each word will calculate P(W|H) & P(W|S) from sample dataset to compare and classify as SPAM or HAM
+
+## Reading Data with ngram tokenization.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+df <- as.data.frame(data.raw %>% unnest_tokens(ngram, y, token = "ngrams", n = 1))
+#test <- spam.raw %>% unnest_tokens(word,y, format = "html")
+
+df <- df %>% filter(!is.na(ngram)) %>%
+  anti_join(stop_words, by=c("ngram"="word"))
+#--------------
+dict <- unique(df %>% select(ngram)) 
+temp <- unique(df %>% filter(type=='ham') %>%
+      select(ngram)%>% 
+      group_by(ngram)%>% mutate(h.word.count =n()))
+dict<- full_join(dict,temp,by="ngram")
+
+temp <- unique(df %>% filter(type=='spam') %>%
+      select(ngram)%>% 
+      group_by(ngram)%>% mutate(s.word.count =n()))
+dict<- full_join(dict,temp,by="ngram")
+
+dict["h.total.word.count"]<-count(df %>% filter(type=='ham')) 
+dict["s.total.word.count"]<-count(df %>% filter(type=='spam')) 
+
+dict[is.na(dict)] = 0
+
+dict<- dict %>% mutate(s.word.count=s.word.count+1,h.word.count=s.word.count+1,
+                       p.word.s=s.word.count/s.total.word.count,
+                       p.word.h=h.word.count/h.total.word.count)
+
+temp<- nrow(unique(df %>%filter(type=='ham') %>% 
+                select(x,type) %>%
+                group_by(x)))
+       
+dict["h.docs.with.word"] <- temp
+
+temp<- nrow(unique(df %>%filter(type=='spam') %>% 
+                select(x,type) %>%
+                group_by(x)))
+       
+dict["s.docs.with.word"] <- temp
+
+dict[is.na(dict)] = 0
+dict <- dict %>% mutate(p.h = h.docs.with.word/(s.docs.with.word+h.docs.with.word),
+                        p.s = s.docs.with.word/(s.docs.with.word+h.docs.with.word))
+```
+
+### Plots words from HAM
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ham_wordcloud <- top_n(dict %>% select(ngram,h.word.count) %>%
+  arrange(desc(ngram,h.word.count)),n=300)
+
+wordcloud(ham_wordcloud$ngram,freq = ham_wordcloud$h.word.count,scale=c(3.5,0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+ggplot(ham_wordcloud, aes(h.word.count),horizontal = TRUE) + 
+  geom_histogram()
+
+ggplot(top_n(ham_wordcloud,50), aes(x=reorder(ngram,h.word.count),y =h.word.count)) + 
+  geom_bar(stat='identity',fill="olivedrab")+
+  coord_flip()+
+  ylab("Count")+
+  xlab("ngram")+
+  theme_tufte()+
+  ggtitle("HAM")  
+```
+
+### Plots words from SPAM
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+spam_wordcloud <- top_n(dict %>% select(ngram,s.word.count) %>%
+  arrange(desc(ngram,s.word.count)),n=300)
+
+wordcloud(spam_wordcloud$ngram,freq = spam_wordcloud$s.word.count,scale=c(3.5,0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+ggplot(spam_wordcloud, aes(s.word.count),horizontal = TRUE) + 
+  geom_histogram()
+
+ggplot(top_n(spam_wordcloud,50), aes(x=reorder(ngram,s.word.count),y =s.word.count)) + 
+  geom_bar(stat='identity',fill="olivedrab")+
+  coord_flip()+
+  ylab("Count")+
+  xlab("ngram")+
+  theme_tufte()+
+  ggtitle("SPAM")  
+```
+
+### Using library(tm.plugin.mail) 
+
+hamd.rmd & spam.rmd use VCorpus(MBoxSource(fn), readerControl = list(reader = readMail)) to separate email body, header, subject.... . Emails content are saved in PostgreSQl to retrieve.
+
+Retrieve SPAM from PostgreSQL to an
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+db <- 'project4'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+spam.content<- dbGetQuery(con, "select * from emailcontent where COALESCE(content, '') != '' and SUBSTRING ( file ,1, 4 )='spam'") 
+
+spam.df <- as.data.frame(spam.content %>% unnest_tokens(ngram, content, token = "ngrams", n = 1))
+#View(test)
+test <- spam.df  %>% select(ngram) %>% 
+  anti_join(stop_words, by=c("ngram"="word")) 
+
+test <- unique(test %>% group_by(ngram) %>% 
+                mutate(count = n()))
+
+test<- test %>% arrange(desc(count))
+
+ggplot(top_n(ungroup(test),50), aes(x=reorder(ngram,count),y =count)) + 
+  geom_bar(stat='identity',fill="olivedrab")+
+  coord_flip()+
+  theme_tufte()+
+  ylab("Count")+
+  xlab("ngram")
+
+temp <- test %>% mutate(ratio=count/sum(test$count))
+
+ggplot(temp, aes(count),horizontal = TRUE) + 
+  geom_histogram(aes(x=count,y=..density..),bins=30) +
+  geom_density(color="brown")
+  
+ggplot(temp, aes(sample=count))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+ggplot(temp, aes(sample=ratio))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+p1<-qplot(x=count,data=temp)
+p2<-qplot(x=sqrt(count),data=temp)
+p3<-qplot(x=log10(count),data=temp)
+
+grid.arrange(p1,p2,p3, nrow=1, ncol=3)
+
+normalized.data <- temp %>% mutate(sqrt.freq=sqrt(count),log10.freq=(count))
+ggplot(normalized.data , aes(sample=sqrt.freq))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+ggplot(normalized.data , aes(sample=log10.freq))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+p1<- ggplot(normalized.data , aes(sample=count))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+p2<-ggplot(normalized.data , aes(sample=sqrt.freq))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+p3<- ggplot(normalized.data , aes(sample=log10.freq))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_grid()
+
+grid.arrange(p1,p2,p3, nrow=1, ncol=3)
+
+Q <- quantile(temp$count, probs=c(.25, .75), na.rm = FALSE)
+iqr <- IQR(temp$count)
+
+up <-  Q[2]+1.5*iqr # Upper Range  
+low<- Q[1]-1.5*iqr # Lower Range
+
+eliminated<- subset(temp, temp$count > (Q[1] - 1.5*iqr) & temp$count  < (Q[2]+1.5*iqr))
+
+outliers <- boxplot(temp$count, plot=FALSE)$out
+
+remove.outliers<-temp
+remove.outliers <- remove.outliers[-which(remove.outliers$count %in% outliers),]
+
+x_wordcloud <- top_n(remove.outliers %>% select(ngram,count) %>%
+  arrange(desc(ngram,count)),n=300)
+wordcloud(x_wordcloud$ngram,freq = x_wordcloud$count,scale=c(3.5,0.25),
+          colors=brewer.pal(8,"Dark2"))
+
+par(mfrow=c(1,2))
+boxplot(temp$count,main="Before removing outliers")
+boxplot(remove.outliers$count,main="After removing outliers")
+par("mfrow")
+
+
+# ----------------
+
+```
+
+### Observation from first attempt
+N-Gram & stop_words are not sufficient tools for classifying SPAM & HAM. The structure of an email is different from a book, article, or essay paragraph. An email has a header, sender & recipient(s) information, IP addresses besides the content and footer of the email. An email is maybe formatted in plain text or HTML. After the first attempt, words with high frequency are similar in HAM and SPAM. They are related to email format. Outliers are removed based on the boxplot. However, quickly removing outliers could lead to an accurate corpus for classifying HAM/SPAM.

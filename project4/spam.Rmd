@@ -1,0 +1,140 @@
+
+```{r}
+library(gutenbergr)
+library(tm)
+library(tidyverse)
+library(tidytext)
+library(tm.plugin.mail)
+library(DBI)
+db <- 'project4'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+# get the stop words data
+data("stop_words")
+
+
+# now try to do the same with the document
+setwd("/Users/admin/Desktop/DATA607/project4")
+
+# try to read the directory of files
+filenames <- list.files("spam", pattern="*.*", full.names=TRUE)
+
+# now read all of these files into a tibble with column names(filename and text?)
+all_spam <- tibble()
+
+spam_words <- tibble(
+  word = "a",
+  spam_word_count  = 1
+)
+
+stopper_limit <- 5000
+stopper <- 0
+start_time <- Sys.time()
+
+for (fn in filenames) {
+  # injest the file
+  spam <- read_file(fn)
+  print(fn)
+  email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+ 
+    if(str_detect(spam,"Content-Transfer-Encoding: base64")) {
+      next
+    }
+  
+    # skip if the length is zero
+    if (length(email_message) == 0) {
+      next
+    }
+
+    # skip if we can't get the content type?
+    if (is.na(email_message[[1]]$meta$header)) {
+      next
+    }
+  
+    header <- email_message[[1]]$meta$header
+    hits <- str_match(names(header), regex('content-type', ignore_case = T))
+    content_type_index <- which(!is.na(hits))
+    length(content_type_index)
+  
+    # skip if this email is unparseable
+    if (length(content_type_index) == 0) {
+      next
+    } else {
+      content_type <- header[content_type_index]
+    }
+    
+    content <- email_message[[1]]$content
+    # determine if it's a plain-text or html spam
+  if (str_detect(content_type, regex('plain', ignore_case = T))) {
+
+    #print("plain")
+    
+    spam_lines <- unlist(str_split(spam, "(\n| )"))
+    spam_tibble <- tibble(
+
+      text = content,
+      )
+    
+    spam_words_tmp <- spam_tibble %>% 
+      unnest_tokens(word, text)
+      
+    spam_words_tmp <- spam_words_tmp %>% 
+      anti_join(stop_words, by="word") %>%
+      count(word, name="spam_word_count") %>%
+      arrange(desc(spam_word_count))
+    
+  } else {
+    #print ("html")
+    
+    spam_tibble <- tibble(
+      #text = spam,
+      text = content,
+    )
+    
+    spam_words_tmp <- spam_tibble %>% 
+      unnest_tokens(word, text,format = "html")
+
+    spam_words_tmp <- spam_words_tmp %>% 
+      anti_join(stop_words, by="word")  %>%
+      count(word, name="spam_word_count") %>%
+      arrange(desc(spam_word_count))
+    
+  }
+
+  spam_words <- merge(x = spam_words, y = spam_words_tmp, by.x = "word", by.y = "word", all.x=TRUE, all.y = TRUE)
+  
+  #spam_words
+  spam_words[is.na(spam_words)] <- 0
+  spam_words <- mutate(spam_words, spam_word_count = spam_word_count.x + spam_word_count.y)
+  spam_words <- spam_words[-c(2,3)]
+  #spam_words   
+  
+  stopper <- stopper + 1
+  #print (paste("Iteration", stopper))
+  if (stopper >= stopper_limit) {
+    break
+  }
+
+  if (!is.null(content)){  
+    test <- as.data.frame(content)
+    test["file"] <-fn
+    dbWriteTable(con,'emailcontent',test,append=TRUE)
+  }
+#print(test)
+#
+#
+#
+}
+
+#---------- end loop
+# only keep words that are at least three letters long
+spam_words <- spam_words %>% filter (str_length(word) >= 3)
+
+end_time <- Sys.time()
+end_time - start_time
+
+dbWriteTable(con,'spam_words',spam_words,append=TRUE)
+```
