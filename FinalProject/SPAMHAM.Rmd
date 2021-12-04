@@ -1,0 +1,429 @@
+---
+title: "SPAM-HAM emails Classifier with Logistic Regression in Tidymodels"
+output:
+  rmdformats::downcute: default
+  rmdformats::robobook: default
+  rmdformats::material: default
+---
+## INTRODUCTION
+
+It is a continued work of classifying SPAM-HAM. There was no result from the first attempt without stripping the body/subject of an email , using dictionary N-Gram & stop_words, and naive bayes.
+
+This attempt will build a dictionary from a sample set of the whole SPAM-HAM dataset. It also separates the subject and body of emails by using the packages tm.plugin.mail, tm.plugin.webmining. Losgistic Regression is applied to classify &  predict SPAM-HAM emails.
+
+SPAM-HAM dictionary codes:
+https://github.com/Trangmis/607/blob/master/FinalProject/spam_ham_dictionary.Rmd
+
+### Loading library
+```{r setup, include=FALSE,warning=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tm)
+library(tm.plugin.mail)
+library(tm.plugin.webmining)
+library(tidytext)
+library(tidyverse)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(DBI)
+library(patchwork)
+library(tidymodels)
+library(workflowsets)
+```
+
+## Load Dictionary from PostgreSQL
+```{r dictionary, warning=FALSE}
+db <- 'data607_final'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+
+spam_dictionary <- dbGetQuery(con, "select wordstolower, count(*) from spam_bodywords group by wordstolower")
+spam_subject_dictionary <- dbGetQuery(con, "select wordstolower, count(*) from spam_subjectwords group by wordstolower")
+ham_dictionary <- dbGetQuery(con, "select wordstolower, count(*) from ham_bodywords group by wordstolower")
+ham_subject_dictionary <- dbGetQuery(con, "select wordstolower, count(*) from ham_subjectwords group by wordstolower")
+
+spam_orignal_dictionary <- dbGetQuery(con, "select word, count(*) from spam_bodywords group by word")
+spam_subject_orignal_dictionary <- dbGetQuery(con, "select word, count(*) from spam_subjectwords group by word")
+ham_orignal_dictionary <- dbGetQuery(con, "select word, count(*) from ham_bodywords group by word")
+ham_subject_orignal_dictionary <- dbGetQuery(con, "select word, count(*) from ham_subjectwords group by word")
+```
+
+## Reading emails from SPAM & HAM folder 
+
+All emails are read and joined with SPAM-HAM dictionary. The content of emails as well as its subject are converted into lower case. This step prepares a dataset to apply a model that is trained classify emails.
+
+```{r convert_lower_case, warning=FALSE}
+setwd("/Users/admin/Desktop/DATA607/FinalProject")
+filenames <- list.files("spam", full.names=TRUE)
+email_df <- tibble()
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+      
+      #lengths(gregexpr("\\W+", bodytext)) + 1  
+
+      if (length(bodytext)!=0){ # extractHTMLStrip works
+        bodywords <- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_dictionary,by="wordstolower")
+        bodytotal =lengths(gregexpr("\\W+", bodytext)) + 1
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_dictionary,by="wordstolower")
+        hambody_dictionary = nrow(body_dictionary)
+      } else { # hmtl script
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_dictionary,by="wordstolower")
+        bodytotal =nrow(bodywords)
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_dictionary,by="wordstolower")
+        hambody_dictionary = nrow(body_dictionary)
+       }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        subjecttotal = nrow(subjectwords)
+        subject_dictionary <- inner_join(subjectwords,spam_subject_dictionary,by="wordstolower") 
+        spamsubject_dictionary = nrow(subject_dictionary)
+        subject_dictionary <- inner_join(subjectwords,ham_subject_dictionary,by="wordstolower") 
+        hamsubject_dictionary = nrow(subject_dictionary)
+      } 
+      else{
+        subjecttotal=1
+        spamsubject_dictionary=0
+      }
+      
+      tmp <- tibble(category='spam',file=fn,bodytotal, spambody_dictionary,
+                         spam_p = spambody_dictionary/bodytotal,
+                         subjecttotal, spamsubject_dictionary,
+                         spamsubject_p= spamsubject_dictionary/subjecttotal,
+                         hambody_dictionary, ham_p = hambody_dictionary/bodytotal,
+                         hamsubject_dictionary,hamsubject_p=hamsubject_dictionary/subjecttotal)
+      email_df <- bind_rows(email_df,tmp)
+    }  
+}
+
+setwd("/Users/admin/Desktop/DATA607/FinalProject")
+filenames <- list.files("ham", pattern="*.*", full.names=TRUE)
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+      
+      #lengths(gregexpr("\\W+", bodytext)) + 1  
+
+      if (length(bodytext)!=0){ # extractHTMLStrip works
+        bodywords <- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_dictionary,by="wordstolower")
+        bodytotal =lengths(gregexpr("\\W+", bodytext)) + 1
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_dictionary,by="wordstolower")
+        hambody_dictionary = nrow(body_dictionary)
+      } else { # hmtl script
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_dictionary,by="wordstolower")
+        bodytotal =nrow(bodywords)
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_dictionary,by="wordstolower")
+        hambody_dictionary = nrow(body_dictionary)
+       }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        subjecttotal = nrow(subjectwords)
+        subject_dictionary <- inner_join(subjectwords,spam_subject_dictionary,by="wordstolower") 
+        spamsubject_dictionary = nrow(subject_dictionary)
+        subject_dictionary <- inner_join(subjectwords,ham_subject_dictionary,by="wordstolower") 
+        hamsubject_dictionary = nrow(subject_dictionary)
+      } 
+      else{
+        subjecttotal=1
+        spamsubject_dictionary=0
+      }
+      
+      tmp <- tibble(category='ham',file=fn,bodytotal, spambody_dictionary,
+                         spam_p = spambody_dictionary/bodytotal,
+                         subjecttotal, spamsubject_dictionary,
+                         spamsubject_p= spamsubject_dictionary/subjecttotal,
+                         hambody_dictionary, ham_p = hambody_dictionary/bodytotal,
+                         hamsubject_dictionary,hamsubject_p=hamsubject_dictionary/subjecttotal)
+      email_df <- bind_rows(email_df,tmp)
+    }  
+}
+glimpse(email_df)
+
+```
+
+### Plots
+```{r}
+ggplot(email_df, aes(spambody_dictionary),horizontal = TRUE) + 
+  geom_histogram(aes(x=spambody_dictionary,y=..density..),bins=30) +
+  geom_density(color="brown")+
+  facet_wrap(~category)
+
+ggplot(email_df, aes(hambody_dictionary),horizontal = TRUE) + 
+  geom_histogram(aes(x=hambody_dictionary,y=..density..),bins=30) +
+  geom_density(color="brown")+
+  facet_wrap(~category)
+
+ggplot(email_df , aes(sample=spambody_dictionary))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_wrap(~category)
+
+ggplot(email_df , aes(sample=hambody_dictionary))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_wrap(~category)
+
+
+```
+
+## Reading emails from SPAMTEST & HAMTEST folder 
+
+All emails are read and joined with SPAM-HAM dictionary. The content of emails as well as its subject are kept its origianl format such as capital or lower case letters . This step prepares a dataset to be trained as a model with logistic regression.
+
+```{r keep-original-format,warning=FALSE}
+setwd("/Users/admin/Desktop/DATA607/FinalProject")
+filenames <- list.files("spamtest", full.names=TRUE)
+original_email_df <- tibble()
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+
+      if (length(bodytext)!=0){ # extractHTMLStrip works
+        bodywords <- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_orignal_dictionary,by="word")
+        bodytotal =lengths(gregexpr("\\W+", bodytext)) + 1
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_orignal_dictionary ,by="word")
+        hambody_dictionary = nrow(body_dictionary)
+      } else { # hmtl script
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_orignal_dictionary,by="word")
+        bodytotal =nrow(bodywords)
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_orignal_dictionary ,by="word")
+        hambody_dictionary = nrow(body_dictionary)
+       }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        subjecttotal = nrow(subjectwords)
+        subject_dictionary <- inner_join(subjectwords,spam_subject_orignal_dictionary ,by="word") 
+        spamsubject_dictionary = nrow(subject_dictionary)
+        subject_dictionary <- inner_join(subjectwords,ham_subject_orignal_dictionary ,by="word") 
+        hamsubject_dictionary = nrow(subject_dictionary)
+      } 
+      else{
+        subjecttotal=1
+        spamsubject_dictionary=0
+      }
+      
+      tmp <- tibble(category='spam',file=fn,bodytotal, spambody_dictionary,
+                         spam_p = spambody_dictionary/bodytotal,
+                         subjecttotal, spamsubject_dictionary,
+                         spamsubject_p= spamsubject_dictionary/subjecttotal,
+                         hambody_dictionary, ham_p = hambody_dictionary/bodytotal,
+                         hamsubject_dictionary,hamsubject_p=hamsubject_dictionary/subjecttotal)
+      original_email_df<-bind_rows(original_email_df,tmp)  
+    }  
+}
+
+filenames <- list.files("hamtest", full.names=TRUE)
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+
+      if (length(bodytext)!=0){ # extractHTMLStrip works
+        bodywords <- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_orignal_dictionary,by="word")
+        bodytotal =lengths(gregexpr("\\W+", bodytext)) + 1
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_orignal_dictionary ,by="word")
+        hambody_dictionary = nrow(body_dictionary)
+      } else { # hmtl script
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        body_dictionary <- inner_join(bodywords,spam_orignal_dictionary,by="word")
+        bodytotal =nrow(bodywords)
+        spambody_dictionary = nrow(body_dictionary)
+        body_dictionary <- inner_join(bodywords,ham_orignal_dictionary ,by="word")
+        hambody_dictionary = nrow(body_dictionary)
+       }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        subjecttotal = nrow(subjectwords)
+        subject_dictionary <- inner_join(subjectwords,spam_subject_orignal_dictionary ,by="word") 
+        spamsubject_dictionary = nrow(subject_dictionary)
+        subject_dictionary <- inner_join(subjectwords,ham_subject_orignal_dictionary ,by="word") 
+        hamsubject_dictionary = nrow(subject_dictionary)
+      } 
+      else{
+        subjecttotal=1
+        spamsubject_dictionary=0
+      }
+      
+      tmp <- tibble(category='ham',file=fn,bodytotal, spambody_dictionary,
+                         spam_p = spambody_dictionary/bodytotal,
+                         subjecttotal, spamsubject_dictionary,
+                         spamsubject_p= spamsubject_dictionary/subjecttotal,
+                         hambody_dictionary, ham_p = hambody_dictionary/bodytotal,
+                         hamsubject_dictionary,hamsubject_p=hamsubject_dictionary/subjecttotal)
+     original_email_df<-bind_rows(original_email_df,tmp)  
+    }  
+}
+#original_email_df
+glimpse(original_email_df)
+```
+
+### Plots
+```{r}
+ggplot(original_email_df
+, aes(spambody_dictionary),horizontal = TRUE) + 
+  geom_histogram(aes(x=spambody_dictionary,y=..density..),bins=30) +
+  geom_density(color="brown")+
+  facet_wrap(~category)
+
+ggplot(original_email_df
+, aes(hambody_dictionary),horizontal = TRUE) + 
+  geom_histogram(aes(x=hambody_dictionary,y=..density..),bins=30) +
+  geom_density(color="brown")+
+  facet_wrap(~category)
+
+ggplot(original_email_df
+, aes(sample=spambody_dictionary))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_wrap(~category)
+
+ggplot(original_email_df
+, aes(sample=hambody_dictionary))+
+  stat_qq()+
+  stat_qq_line()+
+  facet_wrap(~category)
+```
+
+## Logistic Regression
+
+### Training Data
+
+```{r trainingdata, warning=FALSE}
+set.seed(11242021)
+df <- original_email_df
+spamham.split <- initial_split(df,strata = category)
+spamham_train <- training(spamham.split)
+spamham_test <- testing(spamham.split)
+
+spamham_folds <- vfold_cv(spamham_train,strata = category)
+spamham_folds 
+
+glm_spec <-logistic_reg()
+
+recipe_basic <- recipe(category~spam_p+ham_p+spamsubject_p+hamsubject_p,data=spamham_train) %>%
+  step_dummy(all_nominal_predictors())
+
+wf <- workflow(recipe_basic,glm_spec )
+
+doParallel::registerDoParallel()
+ctrl_preds <- control_resamples(save_pred = TRUE)
+rs_basic <- fit_resamples(wf,spamham_folds, control=ctrl_preds)
+
+rs_basic
+
+test<-augment(rs_basic)
+
+resultaccuracy <- 1- count(test %>% filter(.pred_class!=category))/count(test)
+resultaccuracy
+
+augment(rs_basic) %>%
+  roc_curve(.pred_class,.pred_ham)%>%
+  autoplot()
+```
+
+## Best Fit & Predict
+
+```{r fit_predict, warning=FALSE}
+bestfit <- fit(wf,spamham_train)
+
+predict(bestfit,spamham_test)
+
+predict(bestfit,email_df,type="conf_int")
+
+email.pred <- augment(bestfit,email_df) %>% 
+  bind_cols(predict(bestfit,email_df,type="conf_int"))
+
+p1 <- email.pred %>%
+  ggplot(aes(.pred_spam,category,colour = category))+ 
+  geom_errorbar(aes(xmin=.pred_lower_spam,
+                xmax=.pred_upper_spam),
+                width = 0.4, size = 1.2,alpha = 0.05)+
+  geom_point(size=2.5)
+
+p2 <- email_df %>% 
+  ggplot(aes(spam_p,category,colour = category))+
+  geom_point()
+
+p2 + p1
+
+Accuracy_p = 1 - nrow(email.pred %>% filter(category != .pred_class))/nrow(email.pred)
+paste("Accuracy of the prediction model:", round(Accuracy_p*100, 2), "%", sep=" ")
+
+```
+
+## CONCLUSION
+
+The accuracy of the model is 79.67%.
+
+## Work Cited
+
+Silge, Rstats Julia. “Fit and Predict with Tidymodels for #TidyTuesday Bird Baths in Australia.” R-Bloggers, 1 Sept. 2021, www.r-bloggers.com/2021/08/fit-and-predict-with-tidymodels-for-tidytuesday-bird-baths-in-australia.
