@@ -1,0 +1,126 @@
+---
+title: "SPAM HAM DICTIONARY - SAMPLE "
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tm)
+library(tm.plugin.mail)
+library(tm.plugin.webmining)
+library(tidytext)
+library(tidyverse)
+library(gridExtra)
+library(wordcloud)
+library(tidyr)
+library(ggplot2)
+library(dplyr)
+library(ggthemes)
+library(DBI)
+library(rvest)
+library(tidymodels)
+```
+
+### Data processing & Establishing Dictionary
+```{r}
+db <- 'data607_final'  #provide the name of your db
+host_db <- 'localhost'
+db_port <- '5432'
+db_user <- 'postgres' 
+db_password <- 'data607'
+con <- dbConnect(RPostgres::Postgres(), dbname = db, host=host_db, port=db_port, user=db_user, password=db_password) 
+```
+
+### SPAM
+```{r keep-original-format}
+setwd("/Users/admin/Desktop/DATA607/FinalProject")
+filenames <- list.files("spamsample", pattern="*.*", full.names=TRUE)
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+      
+      #lengths(gregexpr("\\W+", bodytext)) + 1  
+
+      if (bodytext!=''){
+        tmp <- tibble(bodytext,file=fn,wordsinemail =lengths(gregexpr("\\W+", bodytext)) + 1 )
+        dbWriteTable(con,'spam_bodytext',tmp,append=TRUE)
+        
+        bodywords <- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        dbWriteTable(con,'spam_bodywords',bodywords,append=TRUE)
+      } else {
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        dbWriteTable(con,'spam_bodywords',bodywords,append=TRUE)
+    
+        tmp <- tibble(bodytext=email_message[["1"]][["content"]],file=fn,wordsinemail = nrow(tmp))
+        dbWriteTable(con,'spam_bodytext',tmp,append=TRUE)
+      }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        dbWriteTable(con,'spam_subjecttext',subjecttext,append=TRUE)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        dbWriteTable(con,'spam_subjectwords',subjectwords,append=TRUE)
+      } 
+    }
+}
+
+```
+
+### HAM
+```{r}
+filenames <- list.files("hamsample", full.names=TRUE)
+ham_dictionary <- read.csv("ham_words.csv")
+
+for (fn in filenames) {
+    print(fn)
+    email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
+    
+    if (!is.null(email_message[["1"]][["content"]])) {
+      bodytext <- extractHTMLStrip(email_message[["1"]][["content"]], asText = TRUE)
+      
+      if (bodytext!=''){
+        tmp <- tibble(bodytext,file=fn,wordsinemail =lengths(gregexpr("\\W+", bodytext)) + 1 )
+        dbWriteTable(con,'ham_bodytext',tmp,append=TRUE)
+        
+        bodywords<- tibble(word=unlist(str_split(bodytext, "(\n| )")),file=fn)
+        bodywords <- bodywords %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        dbWriteTable(con,'ham_bodywords',bodywords,append=TRUE)
+      } else{
+        tmp <- tibble(text= email_message[["1"]][["content"]],file=fn) %>% 
+           unnest_tokens(word, text, format="html")
+        bodywords <- tmp %>% filter(nchar(word)>0) %>%
+                     mutate(wordstolower=str_to_lower(word))
+        dbWriteTable(con,'ham_bodywords',bodywords,append=TRUE)
+    
+        tmp <- tibble(bodytext=email_message[["1"]][["content"]],file=fn,wordsinemail = nrow(tmp))
+        dbWriteTable(con,'ham_bodytext',tmp,append=TRUE)
+      }
+    
+      if (!is.null(email_message[["1"]][["meta"]][["header"]][["Subject"]])){  
+        subjecttext <- tibble(subject=email_message[["1"]][["meta"]][["header"]][["Subject"]],file=fn)
+        dbWriteTable(con,'ham_subjecttext',subjecttext,append=TRUE)
+        subjectwords <- tibble(word=unlist(str_split(subjecttext$subject, "(\n| )")),file=fn)
+        subjectwords <- subjectwords %>% filter(nchar(word)>0)%>%
+                     mutate(wordstolower=str_to_lower(word))
+        
+        dbWriteTable(con,'ham_subjectwords',subjectwords,append=TRUE)
+      }  
+    }  
+}
+
+```
+
+
