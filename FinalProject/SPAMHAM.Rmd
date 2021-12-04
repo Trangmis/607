@@ -1,5 +1,7 @@
 ---
 title: "SPAM-HAM emails Classifier with Logistic Regression in Tidymodels"
+author: "Trang Do"
+date: "`r Sys.Date()`"
 output:
   rmdformats::downcute: default
   rmdformats::robobook: default
@@ -62,7 +64,6 @@ filenames <- list.files("spam", full.names=TRUE)
 email_df <- tibble()
 
 for (fn in filenames) {
-    print(fn)
     email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
     
     if (!is.null(email_message[["1"]][["content"]])) {
@@ -121,7 +122,6 @@ setwd("/Users/admin/Desktop/DATA607/FinalProject")
 filenames <- list.files("ham", pattern="*.*", full.names=TRUE)
 
 for (fn in filenames) {
-    print(fn)
     email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
     
     if (!is.null(email_message[["1"]][["content"]])) {
@@ -214,7 +214,6 @@ filenames <- list.files("spamtest", full.names=TRUE)
 original_email_df <- tibble()
 
 for (fn in filenames) {
-    print(fn)
     email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
     
     if (!is.null(email_message[["1"]][["content"]])) {
@@ -270,7 +269,7 @@ for (fn in filenames) {
 filenames <- list.files("hamtest", full.names=TRUE)
 
 for (fn in filenames) {
-    print(fn)
+
     email_message <- VCorpus(MBoxSource(fn), readerControl = list(reader = readMail))
     
     if (!is.null(email_message[["1"]][["content"]])) {
@@ -322,7 +321,7 @@ for (fn in filenames) {
      original_email_df<-bind_rows(original_email_df,tmp)  
     }  
 }
-#original_email_df
+
 glimpse(original_email_df)
 ```
 
@@ -356,6 +355,67 @@ ggplot(original_email_df
 ## Logistic Regression
 
 ### Training Data
+
+#### Based on one variable spam_p
+
+```{r , warning=FALSE}  
+df <- original_email_df
+spamham.split <- initial_split(df,strata = category)
+spamham_train <- training(spamham.split)
+spamham_test <- testing(spamham.split)
+
+spamham_folds <- vfold_cv(spamham_train,strata = category)
+spamham_folds 
+
+glm_spec <-logistic_reg()
+
+recipe_basic <- recipe(category~spam_p,data=spamham_train) %>%
+  step_dummy(all_nominal_predictors())
+
+wf <- workflow(recipe_basic,glm_spec )
+
+doParallel::registerDoParallel()
+ctrl_preds <- control_resamples(save_pred = TRUE)
+rs_basic <- fit_resamples(wf,spamham_folds, control=ctrl_preds)
+
+rs_basic
+
+test<-augment(rs_basic)
+
+resultaccuracy <- 1- count(test %>% filter(.pred_class!=category))/count(test)
+resultaccuracy
+
+augment(rs_basic) %>%
+  roc_curve(.pred_class,.pred_ham)%>%
+  autoplot()
+
+bestfit <- fit(wf,spamham_train)
+
+predict(bestfit,spamham_test)
+
+predict(bestfit,email_df,type="conf_int")
+
+email.pred <- augment(bestfit,email_df) %>% 
+  bind_cols(predict(bestfit,email_df,type="conf_int"))
+
+p1 <- email.pred %>%
+  ggplot(aes(.pred_spam,category,colour = category))+ 
+  geom_errorbar(aes(xmin=.pred_lower_spam,
+                xmax=.pred_upper_spam),
+                width = 0.4, size = 1.2,alpha = 0.05)+
+  geom_point(size=2.5)
+
+p2 <- email_df %>% 
+  ggplot(aes(spam_p,category,colour = category))+
+  geom_point()
+
+p2 + p1
+
+Accuracy_p = 1 - nrow(email.pred %>% filter(category != .pred_class))/nrow(email.pred)
+paste("Accuracy of the prediction model:", round(Accuracy_p*100, 2), "%", sep=" ")
+```
+
+#### Combined 4 variables spam_p+ham_p+spamsubject_p+hamsubject_p
 
 ```{r trainingdata, warning=FALSE}
 set.seed(11242021)
@@ -422,7 +482,7 @@ paste("Accuracy of the prediction model:", round(Accuracy_p*100, 2), "%", sep=" 
 
 ## CONCLUSION
 
-The accuracy of the model is 79.67%.
+The accuracy of the model is 79.67%.However, the accuracy of the results might improve with tuning tools, available different methods and dictionary. Fit & predict based on one variable spam_p doesn't have the result at 56.06 % and is not good as combining 4 variables.
 
 ## Work Cited
 
